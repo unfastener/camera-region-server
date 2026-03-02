@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Region Editor</title>
+  <style>
+    :root{
+      --gap: 16px;
+      --fg: #fff;
+      --bg: #292929;
+      --button-fg: #ddd;
+      --button-bg: rgb(30,30,30);
+      --button-bg-disabled: rgb(22,22,22);
+      --button-fg-disabled: #666;
+      --drop-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      --stream-bg: #000;
+
+      --wire: rgba(200,200,200,0.95);
+      --wire-selected: rgba(255,220,70,0.98);
+      --wire-outline: rgba(0,0,0,0.85);
+      --wire-width: 2.25;
+      --wire-outline-width: 4.75;
+      --label-font: 13px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      --label-pad: 6;
+      --label-radius: 6;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .page{
+      min-height: 100%;
+      display:flex;
+      flex-direction:column;
+      box-sizing:border-box;
+      padding:var(--gap);
+      gap:var(--gap);
+    }
+
+    .toolbar{
+      display:grid;
+      grid-template-columns: auto 1fr auto;
+      align-items:center;
+      gap: var(--gap);
+    }
+
+    .logo{
+      height: calc(2 * 42px + 8px);
+      width: 220px;
+      max-width: 28vw;
+      border-radius: 12px;
+      box-shadow: var(--drop-shadow);
+      background: url("/logo.png") no-repeat center / contain;
+      background-color: rgba(0,0,0,0.15);
+      user-select:none;
+    }
+
+    .controls{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .row{
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      min-width:0;
+      flex-wrap: nowrap;
+    }
+
+    .row .spacer{ flex: 1; }
+
+    button, input, select, label.filebtn{
+      border: 1px solid rgba(255,255,255,0.10);
+      background: var(--button-bg);
+      color: var(--button-fg);
+      border-radius: 12px;
+      box-shadow: var(--drop-shadow);
+      padding: 10px 12px;
+      font: 600 14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      letter-spacing: 0.2px;
+      outline: none;
+      transition: transform 80ms ease, opacity 80ms ease, border-color 120ms ease;
+    }
+
+    button:hover:not(:disabled), label.filebtn:hover{
+      transform: translateY(-1px);
+      border-color: rgba(255,255,255,0.22);
+      cursor:pointer;
+    }
+
+    button:active:not(:disabled), label.filebtn:active{
+      transform: translateY(0px);
+      opacity: 0.9;
+    }
+
+    button:disabled, input:disabled, select:disabled, label.filebtn.disabled{
+      background: var(--button-bg-disabled);
+      color: var(--button-fg-disabled);
+      box-shadow: none;
+      border-color: rgba(255,255,255,0.06);
+      cursor:not-allowed;
+      transform:none;
+      opacity: 0.9;
+    }
+
+    input, select{
+      font-weight: 500;
+      padding: 10px 10px;
+      min-width: 0;
+    }
+
+    .small{
+      font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      opacity: 0.85;
+      user-select:none;
+      white-space: nowrap;
+    }
+
+    .regionpicker{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      min-width: 0;
+      flex: 1;
+    }
+
+    #regionSelect{
+      width: 210px;
+      max-width: 20vw;
+    }
+    #regionName{ flex: 1; min-width: 0; }
+    #regionDesc{ flex: 1; min-width: 0; }
+
+    .wrap{
+      flex:1;
+      display:flex;
+      align-items: stretch;
+      justify-content:center;
+      min-height: 0;
+    }
+
+    .card{
+      position:relative;
+      width: 100%;
+      max-width: 1800px;
+      border-radius: 12px;
+      overflow:hidden;
+      box-shadow: var(--drop-shadow);
+      background: var(--stream-bg);
+      user-select:none;
+      min-height: 0;
+    }
+
+    .stage{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: #111;
+    }
+
+    img#photo{
+      max-width:100%;
+      max-height:100%;
+      width:auto;
+      height:auto;
+      display:block;
+      object-fit: contain;
+      user-select:none;
+      -webkit-user-drag: none;
+      pointer-events:none;
+    }
+
+    canvas#overlay{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      pointer-events:auto;
+      touch-action:none;
+    }
+
+    .spinner{
+      position:absolute;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(1px);
+    }
+    .spinner.show{ display:flex; }
+    .spin{
+      width: 60px;
+      height: 60px;
+      animation: rot 1.0s linear infinite;
+      filter: drop-shadow(0 10px 18px rgba(0,0,0,0.5));
+      opacity: 0.95;
+    }
+    @keyframes rot { from { transform: rotate(0deg); } to { transform: rotate(360deg);} }
+
+    .hint{
+      position:absolute;
+      left: 12px;
+      bottom: 10px;
+      font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      opacity: 0.65;
+      user-select:none;
+      pointer-events:none;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    }
+
+    input[type="file"]{ display:none; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="toolbar">
+      <div class="logo" aria-label="Logo"></div>
+
+      <div class="controls">
+        <div class="row">
+          <button id="btnRefresh">Refresh</button>
+          <div class="small" id="lastRefresh">&nbsp;</div>
+
+          <div class="regionpicker">
+            <select id="regionSelect" disabled></select>
+            <input id="regionName" type="text" placeholder="region_name" disabled />
+          </div>
+
+          <button id="btnNext" disabled>Next</button>
+          <button id="btnAdd" disabled>Add</button>
+          <button id="btnSave" disabled>Save</button>
+
+          <label class="filebtn disabled" id="btnFileSave" title="Save regions to a file">
+            File Save
+          </label>
+        </div>
+
+        <div class="row">
+          <div class="spacer"></div>
+          <input id="regionDesc" type="text" placeholder="Description" disabled />
+
+          <button id="btnPrev" disabled>Prev</button>
+          <button id="btnDel" disabled>Del</button>
+          <button id="btnRevert" disabled>Revert</button>
+
+          <label class="filebtn disabled" id="btnFileLoad" title="Load regions from a file">
+            File Load
+          </label>
+          <input id="fileInput" type="file" accept="application/json,.json" />
+        </div>
+      </div>
+
+      <div></div>
+    </div>
+
+    <div class="wrap">
+      <div class="card" id="card">
+        <div class="stage" id="stage">
+          <img id="photo" alt="Camera capture" />
+          <canvas id="overlay"></canvas>
+
+          <div class="spinner" id="spinner" aria-label="Loading">
+            <!-- Easily replaceable spinner asset -->
+            <svg class="spin" viewBox="0 0 50 50" aria-hidden="true">
+              <circle cx="25" cy="25" r="20" fill="none" stroke="white" stroke-opacity="0.25" stroke-width="5"></circle>
+              <path d="M45 25a20 20 0 0 1-20 20" fill="none" stroke="white" stroke-width="5" stroke-linecap="round"></path>
+            </svg>
+          </div>
+
+          <div class="hint">Drag inside region to move. Drag handles to resize/rotate.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ---------- DOM ----------
+  const btnRefresh = document.getElementById('btnRefresh');
+  const btnPrev    = document.getElementById('btnPrev');
+  const btnNext    = document.getElementById('btnNext');
+  const btnAdd     = document.getElementById('btnAdd');
+  const btnDel     = document.getElementById('btnDel');
+  const btnSave    = document.getElementById('btnSave');
+  const btnRevert  = document.getElementById('btnRevert');
+  const btnFileSave= document.getElementById('btnFileSave');
+  const btnFileLoad= document.getElementById('btnFileLoad');
+
+  const lastRefresh = document.getElementById('lastRefresh');
+
+  const regionSelect= document.getElementById('regionSelect');
+  const regionName  = document.getElementById('regionName');
+  const regionDesc  = document.getElementById('regionDesc');
+
+  const fileInput   = document.getElementById('fileInput');
+
+  const photo       = document.getElementById('photo');
+  const overlay     = document.getElementById('overlay');
+  const spinner     = document.getElementById('spinner');
+  const card        = document.getElementById('card');
+
+  // ---------- State ----------
+  let imageReady = false;
+  let imgW = 0, imgH = 0;          // natural image pixels
+  let dispRect = null;             // displayed image rect within card, in CSS pixels
+
+  let regions = [];                // array of {name, description, geometry:{cx,cy,width,height,rotation_deg}}
+  let selected = 0;                // index into regions
+  let dirty = false;
+
+  let loadingImage = false;
+  let loadingRegions = false;
+  let savingRegions = false;
+
+  // Pointer interaction
+  let drag = null; // {mode, start:{x,y}, region0:{...}, pointerId}
+  // mode: 'move'|'rotate'|'width'|'height'
+  // Coordinates for interaction are in IMAGE PIXELS.
+
+  // ---------- Helpers ----------
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const rad = (deg) => deg * Math.PI / 180;
+  const deg = (r) => r * 180 / Math.PI;
+
+  function nowLocalString(d) {
+    // Human readable, local time
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mm = pad2(d.getMonth()+1);
+    const dd = pad2(d.getDate());
+    const hh = pad2(d.getHours());
+    const mi = pad2(d.getMinutes());
+    const ss = pad2(d.getSeconds());
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  }
+
+  function setSpinner(on) {
+    spinner.classList.toggle('show', !!on);
+  }
+
+  function setDirty(v) {
+    dirty = !!v;
+    renderToolbar();
+  }
+
+  function renderToolbar() {
+    // Save bullet
+    btnSave.textContent = (dirty ? "• Save" : "Save");
+
+    // Enable/disable logic
+    btnRefresh.disabled = loadingImage;
+
+    const haveRegions = regions.length > 0;
+    const regionsBusy = loadingRegions || savingRegions;
+
+    // While loading regions: most controls disabled
+    regionSelect.disabled = regionsBusy || !haveRegions;
+    regionName.disabled   = regionsBusy || !haveRegions;
+    regionDesc.disabled   = regionsBusy || !haveRegions;
+
+    btnPrev.disabled   = regionsBusy || !haveRegions;
+    btnNext.disabled   = regionsBusy || !haveRegions;
+    btnDel.disabled    = regionsBusy || !haveRegions;
+    btnSave.disabled   = regionsBusy || !haveRegions;
+    btnRevert.disabled = regionsBusy && !haveRegions; // per prompt: if fail, allow revert retry; here we keep enabled unless currently loading
+    if (loadingRegions) btnRevert.disabled = true;
+
+    btnAdd.disabled    = regionsBusy || !imageReady;
+
+    // File buttons are labels
+    setFileBtnEnabled(btnFileSave, !regionsBusy && haveRegions);
+    setFileBtnEnabled(btnFileLoad, !loadingRegions); // load from file even if no regions
+  }
+
+  function setFileBtnEnabled(labelEl, enabled) {
+    labelEl.classList.toggle('disabled', !enabled);
+    labelEl.tabIndex = enabled ? 0 : -1;
+    labelEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+  }
+
+  function imageToCanvas(p) {
+    // p in IMAGE PIXELS -> canvas pixels
+    if (!dispRect) return {x:0,y:0};
+    const sx = dispRect.w / imgW;
+    const sy = dispRect.h / imgH;
+    return { x: dispRect.x + p.x * sx, y: dispRect.y + p.y * sy };
+  }
+
+  function canvasToImage(p) {
+    // p in canvas CSS px -> IMAGE PIXELS
+    if (!dispRect) return {x:0,y:0};
+    const sx = imgW / dispRect.w;
+    const sy = imgH / dispRect.h;
+    return { x: (p.x - dispRect.x) * sx, y: (p.y - dispRect.y) * sy };
+  }
+
+  function updateDispRect() {
+    // Determine where the image is actually drawn within the card
+    const stageRect = card.getBoundingClientRect();
+    const imgRect = photo.getBoundingClientRect();
+
+    // The <img> is centered within the card (flex). Its rect is the displayed image.
+    // Convert to coordinates relative to card.
+    dispRect = {
+      x: imgRect.left - stageRect.left,
+      y: imgRect.top  - stageRect.top,
+      w: imgRect.width,
+      h: imgRect.height,
+      stageW: stageRect.width,
+      stageH: stageRect.height,
+    };
+
+    // Resize canvas to device pixels for crisp drawing
+    const dpr = window.devicePixelRatio || 1;
+    overlay.width  = Math.max(1, Math.round(stageRect.width * dpr));
+    overlay.height = Math.max(1, Math.round(stageRect.height * dpr));
+    overlay.style.width = `${stageRect.width}px`;
+    overlay.style.height = `${stageRect.height}px`;
+
+    // Scale drawing ops to CSS px
+    const ctx = overlay.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function ensureMinSizes(r) {
+    // Clamp to minimum sizes: width>=64, height>=32
+    const g = r.geometry;
+    const w0 = g.width, h0 = g.height;
+    g.width = Math.max(64, Math.round(g.width));
+    g.height = Math.max(32, Math.round(g.height));
+    if (g.width !== w0 || g.height !== h0) setDirty(true);
+  }
+
+  function uniqueRegionName() {
+    let n = 0;
+    while (true) {
+      const name = `region_${n}`;
+      if (!regions.some(r => r.name === name)) return name;
+      n++;
+    }
+  }
+
+  function selectIndex(i) {
+    if (!regions.length) return;
+    selected = ((i % regions.length) + regions.length) % regions.length;
+    syncSelectedToFields();
+    redraw();
+  }
+
+  function syncSelectedToFields() {
+    if (!regions.length) return;
+    regionSelect.value = String(selected);
+    regionName.value = regions[selected].name ?? '';
+    regionDesc.value = regions[selected].description ?? '';
+  }
+
+  function buildRegionSelect() {
+    regionSelect.innerHTML = '';
+    regions.forEach((r, idx) => {
+      const opt = document.createElement('option');
+      opt.value = String(idx);
+      opt.textContent = `${idx}: ${r.name}`;
+      regionSelect.appendChild(opt);
+    });
+    if (regions.length) {
+      regionSelect.value = String(selected);
+    }
+  }
+
+  function getCssVar(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  // ---------- Drawing ----------
+  function redraw() {
+    updateDispRect();
+    const ctx = overlay.getContext('2d');
+    const stageRect = card.getBoundingClientRect();
+    ctx.clearRect(0, 0, stageRect.width, stageRect.height);
+
+    // No overlays until image ready + have natural dimensions
+    if (!imageReady || !regions.length || !imgW || !imgH) return;
+
+    // Draw regions: largest index first (behind), index 0 last (front), selected on top of all.
+    const indices = regions.map((_, i) => i).sort((a,b) => b-a);
+    const sel = selected;
+    const ordered = indices.filter(i => i !== sel).concat(sel);
+
+    for (const i of ordered) {
+      drawRegion(ctx, regions[i], i, i === sel);
+    }
+  }
+
+  function drawRegion(ctx, r, idx, isSelected) {
+    const g = r.geometry;
+    const color = isSelected ? getCssVar('--wire-selected', 'rgba(255,220,70,0.98)')
+                             : getCssVar('--wire', 'rgba(200,200,200,0.95)');
+
+    const outline = getCssVar('--wire-outline', 'rgba(0,0,0,0.85)');
+    const wCol = parseFloat(getCssVar('--wire-width', '2.25')) || 2.25;
+    const wOut = parseFloat(getCssVar('--wire-outline-width', '4.75')) || 4.75;
+
+    const cx = g.cx, cy = g.cy;
+    const w = g.width, h = g.height;
+
+    const theta = -rad(g.rotation_deg || 0); // draw in y-down canvas; negative to match CCW semantics
+    const cos = Math.cos(theta), sin = Math.sin(theta);
+
+    // Corner points in IMAGE pixels (unscaled)
+    const corners = [
+      {x: -w/2, y: -h/2},
+      {x:  w/2, y: -h/2},
+      {x:  w/2, y:  h/2},
+      {x: -w/2, y:  h/2},
+    ].map(p => ({
+      x: cx + p.x*cos - p.y*sin,
+      y: cy + p.x*sin + p.y*cos
+    })).map(imageToCanvas);
+
+    // Outline then main stroke (wireframe)
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    for (let i=1;i<4;i++) ctx.lineTo(corners[i].x, corners[i].y);
+    ctx.closePath();
+
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = wOut;
+    ctx.stroke();
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = wCol;
+    ctx.stroke();
+
+    // Label box (rotates with region)
+    const labelFont = getCssVar('--label-font', '13px system-ui');
+    ctx.font = labelFont;
+    const label = String(idx);
+
+    const pad = parseFloat(getCssVar('--label-pad', '6')) || 6;
+    const radius = parseFloat(getCssVar('--label-radius', '6')) || 6;
+
+    // Draw label in local coords at top-left corner, rotated with region
+    // We draw using transform around center.
+    const c = imageToCanvas({x: cx, y: cy});
+    const sx = dispRect.w / imgW;
+    const sy = dispRect.h / imgH;
+
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    // Scale is already baked into imageToCanvas points; but for local coords we scale manually:
+    ctx.rotate(theta);
+    ctx.scale(sx, sy);
+
+    const m = ctx.measureText(label);
+    const lw = m.width + 2*pad;
+    const lh = 16 + 2*pad; // fixed-ish height; OK for system-ui
+    const x0 = -w/2;
+    const y0 = -h/2;
+
+    // Filled box with outline
+    roundRect(ctx, x0, y0, lw, lh, radius / Math.max(sx, sy));
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 2 / Math.max(sx, sy);
+    ctx.strokeStyle = outline;
+    ctx.stroke();
+
+    ctx.fillStyle = '#000';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x0 + pad, y0 + lh/2);
+
+    // Handles for selected region only
+    if (isSelected) {
+      const hs = handleSizesImagePx(g);
+      drawHandlesLocal(ctx, w, h, hs, color, outline);
+    }
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function handleSizesImagePx(g) {
+    // Implements prompt heuristics in image pixels
+    const minHandle = 12; // image px
+    const maxHandle = Math.max(imgW, imgH) * 0.05;
+
+    const w = g.width, h = g.height;
+    const wh = Math.max(minHandle, Math.min(0.5 * w, maxHandle));
+    const hh = Math.max(minHandle, Math.min(0.5 * h, maxHandle));
+    const rd = Math.max(minHandle, Math.min(0.5 * Math.min(w, h), maxHandle));
+    return { wh, hh, rd };
+  }
+
+  function drawHandlesLocal(ctx, w, h, hs, color, outline) {
+    // local coordinate system, origin at center, already scaled to image pixels.
+    // Width handle: square at right edge midpoint
+    const wh = hs.wh;
+    const hh = hs.hh;
+    const rd = hs.rd;
+
+    // Outline width in local coords
+    const lw = 2;
+
+    // Width handle
+    ctx.beginPath();
+    ctx.rect(w/2 + 6, -wh/2, wh, wh);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
+
+    // Height handle (top edge midpoint)
+    ctx.beginPath();
+    ctx.rect(-hh/2, -h/2 - 6 - hh, hh, hh);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
+
+    // Rotation handle (top-right corner) as circle
+    const rx = w/2;
+    const ry = -h/2;
+    const r = rd/2;
+    ctx.beginPath();
+    ctx.arc(rx, ry, r, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
+  }
+
+  // ---------- Hit testing ----------
+  function pointInsideRegionImage(px, py, g) {
+    // Rotate point into region local frame
+    const theta = -rad(g.rotation_deg || 0);
+    const dx = px - g.cx;
+    const dy = py - g.cy;
+    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
+    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
+    return (Math.abs(lx) <= g.width/2) && (Math.abs(ly) <= g.height/2);
+  }
+
+  function handleHitTestImage(px, py, g) {
+    // returns mode or null. Priority: width, height, rotation, move.
+    const theta = -rad(g.rotation_deg || 0);
+    const dx = px - g.cx;
+    const dy = py - g.cy;
+    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
+    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
+
+    const hs = handleSizesImagePx(g);
+    const wh = hs.wh, hh = hs.hh, rd = hs.rd;
+
+    // width handle square centered at (w/2 + 6 + wh/2, 0)
+    const wx = g.width/2 + 6 + wh/2;
+    const wy = 0;
+    if (Math.abs(lx - wx) <= wh/2 && Math.abs(ly - wy) <= wh/2) return 'width';
+
+    // height handle square centered at (0, -h/2 - 6 - hh/2)
+    const hx = 0;
+    const hy = -g.height/2 - 6 - hh/2;
+    if (Math.abs(lx - hx) <= hh/2 && Math.abs(ly - hy) <= hh/2) return 'height';
+
+    // rotation handle circle centered at (w/2, -h/2)
+    const rx = g.width/2;
+    const ry = -g.height/2;
+    const rr = rd/2;
+    const dd = (lx - rx)*(lx - rx) + (ly - ry)*(ly - ry);
+    if (dd <= rr*rr) return 'rotate';
+
+    if (Math.abs(lx) <= g.width/2 && Math.abs(ly) <= g.height/2) return 'move';
+    return null;
+  }
+
+  function pickRegionAtImage(px, py) {
+    if (!regions.length) return null;
+
+    const inside = [];
+    for (let i=0;i<regions.length;i++) {
+      if (pointInsideRegionImage(px, py, regions[i].geometry)) inside.push(i);
+    }
+    if (!inside.length) return null;
+
+    // Priority: already selected if it's in the list, else closest center to click.
+    if (inside.includes(selected)) return selected;
+
+    let best = inside[0];
+    let bestD = Infinity;
+    for (const i of inside) {
+      const g = regions[i].geometry;
+      const d = (g.cx - px)*(g.cx - px) + (g.cy - py)*(g.cy - py);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  // ---------- API ----------
+  async function loadRegionsFromServer() {
+    loadingRegions = true;
+    renderToolbar();
+    try {
+      const res = await fetch('/api/v1/regions', { cache: 'no-store' });
+      if (!res.ok) throw new Error('regions fetch failed');
+      const data = await res.json();
+      const rr = Array.isArray(data.regions) ? data.regions : [];
+      regions = rr.map(r => ({
+        name: String(r.name ?? ''),
+        description: String(r.description ?? ''),
+        geometry: {
+          cx: Number(r.geometry?.cx ?? 0),
+          cy: Number(r.geometry?.cy ?? 0),
+          width: Number(r.geometry?.width ?? 64),
+          height: Number(r.geometry?.height ?? 32),
+          rotation_deg: Number(r.geometry?.rotation_deg ?? 0),
+        }
+      }));
+      regions.forEach(ensureMinSizes);
+
+      selected = 0;
+      buildRegionSelect();
+      syncSelectedToFields();
+      setDirty(false);
+    } catch (_) {
+      // deliberate: no user-facing errors
+    } finally {
+      loadingRegions = false;
+      renderToolbar();
+      redraw();
+    }
+  }
+
+  async function saveRegionsToServer() {
+    if (!regions.length) return;
+    savingRegions = true;
+    renderToolbar();
+    try {
+      const body = JSON.stringify({ regions: regions.map(r => ({
+        name: r.name,
+        description: r.description,
+        geometry: {
+          cx: r.geometry.cx,
+          cy: r.geometry.cy,
+          width: Math.round(r.geometry.width),
+          height: Math.round(r.geometry.height),
+          rotation_deg: r.geometry.rotation_deg,
+        }
+      }))});
+      const res = await fetch('/api/v1/regions', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body
+      });
+      if (!res.ok) throw new Error('save failed');
+      // optional body; ignore
+      setDirty(false);
+    } catch (_) {
+      // no user-facing errors
+    } finally {
+      savingRegions = false;
+      renderToolbar();
+      redraw();
+    }
+  }
+
+  async function loadImageFromServer() {
+    loadingImage = true;
+    renderToolbar();
+    setSpinner(true);
+    try {
+      // Always request a new capture, blocking
+      const res = await fetch('/api/v1/images/full?new_capture=true&wait=true', { cache: 'no-store' });
+      if (!res.ok) throw new Error('image fetch failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      photo.onload = () => {
+        try { URL.revokeObjectURL(url); } catch {}
+        imageReady = true;
+        imgW = photo.naturalWidth || 0;
+        imgH = photo.naturalHeight || 0;
+        updateDispRect();
+        redraw();
+        renderToolbar();
+      };
+      photo.src = url;
+
+      lastRefresh.textContent = nowLocalString(new Date());
+    } catch (_) {
+      // Keep previous image/placeholder
+    } finally {
+      loadingImage = false;
+      setSpinner(false);
+      renderToolbar();
+    }
+  }
+
+  // ---------- File Save/Load ----------
+  function doFileSave() {
+    if (!regions.length) return;
+    const data = {
+      regions: regions.map(r => ({
+        name: r.name,
+        description: r.description,
+        geometry: {
+          cx: r.geometry.cx,
+          cy: r.geometry.cy,
+          width: Math.round(r.geometry.width),
+          height: Math.round(r.geometry.height),
+          rotation_deg: r.geometry.rotation_deg,
+        }
+      }))
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date();
+    const y = stamp.getFullYear();
+    const m = String(stamp.getMonth()+1).padStart(2,'0');
+    const d = String(stamp.getDate()).padStart(2,'0');
+    const hh = String(stamp.getHours()).padStart(2,'0');
+    const mm = String(stamp.getMinutes()).padStart(2,'0');
+    a.download = `regions-${y}${m}${d}-${hh}${mm}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 250);
+  }
+
+  function doFileLoad(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const obj = JSON.parse(String(reader.result || ''));
+        const rr = Array.isArray(obj.regions) ? obj.regions : [];
+        regions = rr.map(r => ({
+          name: String(r.name ?? ''),
+          description: String(r.description ?? ''),
+          geometry: {
+            cx: Number(r.geometry?.cx ?? 0),
+            cy: Number(r.geometry?.cy ?? 0),
+            width: Number(r.geometry?.width ?? 64),
+            height: Number(r.geometry?.height ?? 32),
+            rotation_deg: Number(r.geometry?.rotation_deg ?? 0),
+          }
+        }));
+        regions.forEach(ensureMinSizes);
+        selected = 0;
+        buildRegionSelect();
+        syncSelectedToFields();
+        setDirty(true);
+        renderToolbar();
+        redraw();
+      } catch (_) {
+        // no user-facing errors
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- UI actions ----------
+  btnRefresh.addEventListener('click', () => { if (!loadingImage) loadImageFromServer(); });
+
+  btnPrev.addEventListener('click', () => selectIndex(selected - 1));
+  btnNext.addEventListener('click', () => selectIndex(selected + 1));
+
+  btnAdd.addEventListener('click', () => {
+    if (!imageReady || !imgW || !imgH) return;
+    const name = uniqueRegionName();
+    const w = Math.max(64, Math.round(imgW * 0.20));
+    const h = Math.max(32, Math.round(imgH * 0.20));
+    regions.push({
+      name,
+      description: "",
+      geometry: { cx: imgW/2, cy: imgH/2, width: w, height: h, rotation_deg: 0 }
+    });
+    selected = regions.length - 1;
+    buildRegionSelect();
+    syncSelectedToFields();
+    setDirty(true);
+    renderToolbar();
+    redraw();
+  });
+
+  btnDel.addEventListener('click', () => {
+    if (!regions.length) return;
+    const del = selected;
+    regions.splice(del, 1);
+    if (regions.length) {
+      selected = Math.min(del, regions.length - 1);
+    } else {
+      selected = 0;
+    }
+    buildRegionSelect();
+    syncSelectedToFields();
+    setDirty(true);
+    renderToolbar();
+    redraw();
+  });
+
+  btnSave.addEventListener('click', () => { if (!savingRegions) saveRegionsToServer(); });
+  btnRevert.addEventListener('click', () => { if (!loadingRegions) loadRegionsFromServer(); });
+
+  regionSelect.addEventListener('change', () => {
+    const i = Number(regionSelect.value);
+    if (!Number.isFinite(i)) return;
+    selectIndex(i);
+  });
+
+  function validateName(s) {
+    // Spec: must be identifier ^[A-Za-z_][A-Za-z0-9_]*$
+    const re = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    return re.test(s);
+  }
+
+  regionName.addEventListener('input', () => {
+    if (!regions.length) return;
+    const s = regionName.value;
+    // Soft validation: if invalid, don't apply until it becomes valid.
+    if (!validateName(s)) return;
+    regions[selected].name = s;
+    buildRegionSelect();
+    setDirty(true);
+    redraw();
+  });
+
+  regionDesc.addEventListener('input', () => {
+    if (!regions.length) return;
+    regions[selected].description = regionDesc.value;
+    setDirty(true);
+  });
+
+  // File buttons
+  btnFileSave.addEventListener('click', () => {
+    if (btnFileSave.classList.contains('disabled')) return;
+    doFileSave();
+  });
+  btnFileLoad.addEventListener('click', () => {
+    if (btnFileLoad.classList.contains('disabled')) return;
+    fileInput.value = '';
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', () => doFileLoad(fileInput.files?.[0]));
+
+  // Keyboard: optional minimal support
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); selectIndex(selected - 1); }
+    if (e.key === 'ArrowRight'){ e.preventDefault(); selectIndex(selected + 1); }
+  });
+
+  // ---------- Pointer interaction ----------
+  overlay.addEventListener('pointerdown', (e) => {
+    if (!imageReady || !dispRect || !regions.length) return;
+
+    const rect = card.getBoundingClientRect();
+    const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+    // Only interact if inside displayed image area (not letterboxing)
+    if (pCanvas.x < dispRect.x || pCanvas.x > dispRect.x + dispRect.w ||
+        pCanvas.y < dispRect.y || pCanvas.y > dispRect.y + dispRect.h) {
+      return;
+    }
+
+    const pImg = canvasToImage(pCanvas);
+
+    // If clicked on region (possibly not selected), select it first
+    const pick = pickRegionAtImage(pImg.x, pImg.y);
+    if (pick === null) return;
+
+    if (pick !== selected) {
+      selectIndex(pick);
+      // Refresh pImg and continue: allow immediate drag after selecting
+    }
+
+    const g = regions[selected].geometry;
+    const mode = handleHitTestImage(pImg.x, pImg.y, g);
+    if (!mode) return;
+
+    drag = {
+      mode,
+      start: { x: pImg.x, y: pImg.y },
+      region0: JSON.parse(JSON.stringify(g)),
+      pointerId: e.pointerId
+    };
+    overlay.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  overlay.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId || !regions.length) return;
+    const rect = card.getBoundingClientRect();
+    const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const pImg = canvasToImage(pCanvas);
+
+    const g0 = drag.region0;
+    const g = regions[selected].geometry;
+
+    if (drag.mode === 'move') {
+      const dx = pImg.x - drag.start.x;
+      const dy = pImg.y - drag.start.y;
+      g.cx = g0.cx + dx;
+      g.cy = g0.cy + dy;
+      setDirty(true);
+      redraw();
+      return;
+    }
+
+    if (drag.mode === 'rotate') {
+      const dx = pImg.x - g0.cx;
+      const dy = pImg.y - g0.cy;
+      // rotation_deg = atan2(-(cursor_y - center_y), (cursor_x - center_x)) in degrees
+      g.rotation_deg = deg(Math.atan2(-dy, dx));
+      setDirty(true);
+      redraw();
+      return;
+    }
+
+    // Width/height resize based on cursor projected onto local axes.
+    const theta = -rad(g0.rotation_deg || 0);
+    const dx = pImg.x - g0.cx;
+    const dy = pImg.y - g0.cy;
+    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
+    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
+
+    if (drag.mode === 'width') {
+      g.width = Math.max(64, 2 * Math.abs(lx));
+      g.height = g0.height;
+      ensureMinSizes(regions[selected]);
+      setDirty(true);
+      redraw();
+      return;
+    }
+    if (drag.mode === 'height') {
+      g.height = Math.max(32, 2 * Math.abs(ly));
+      g.width = g0.width;
+      ensureMinSizes(regions[selected]);
+      setDirty(true);
+      redraw();
+      return;
+    }
+  });
+
+  overlay.addEventListener('pointerup', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag = null;
+    try { overlay.releasePointerCapture(e.pointerId); } catch {}
+  });
+  overlay.addEventListener('pointercancel', (e) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    drag = null;
+    try { overlay.releasePointerCapture(e.pointerId); } catch {}
+  });
+
+  // Click to select (without drag)
+  overlay.addEventListener('click', (e) => {
+    if (!imageReady || !dispRect || !regions.length) return;
+    const rect = card.getBoundingClientRect();
+    const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    if (pCanvas.x < dispRect.x || pCanvas.x > dispRect.x + dispRect.w ||
+        pCanvas.y < dispRect.y || pCanvas.y > dispRect.y + dispRect.h) {
+      return;
+    }
+    const pImg = canvasToImage(pCanvas);
+    const pick = pickRegionAtImage(pImg.x, pImg.y);
+    if (pick !== null) selectIndex(pick);
+  });
+
+  // ---------- Resize / repaint ----------
+  window.addEventListener('resize', () => redraw());
+  photo.addEventListener('load', () => redraw());
+
+  // ---------- Initial load ----------
+  function init() {
+    lastRefresh.textContent = '';
+    renderToolbar();
+
+    // File button behavior
+    btnFileSave.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btnFileSave.click(); }});
+    btnFileLoad.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btnFileLoad.click(); }});
+
+    // On load: do both actions in any order
+    loadRegionsFromServer();
+    loadImageFromServer();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
