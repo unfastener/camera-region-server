@@ -316,18 +316,17 @@
   let imgW = 0, imgH = 0;          // natural image pixels
   let dispRect = null;             // displayed image rect within card, in CSS pixels
 
-  let regions = [];                // array of {name, description, geometry:{cx,cy,width,height,rotation_deg}}
-  let selected = 0;                // index into regions
+  let regions = [];                // {name, description, geometry:{cx,cy,width,height,rotation_deg}}
+  let selected = 0;
   let dirty = false;
 
   let loadingImage = false;
   let loadingRegions = false;
   let savingRegions = false;
 
-  // Pointer interaction
-  let drag = null; // {mode, start:{x,y}, region0:{...}, pointerId}
-  // mode: 'move'|'rotate'|'width'|'height'
-  // Coordinates for interaction are in IMAGE PIXELS.
+  // Drag state:
+  // { mode:'move'|'rotate'|'resize', handle, pointerId, startCanvas, startImg, g0, anchorLocal }
+  let drag = null;
 
   // ---------- Helpers ----------
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -335,37 +334,27 @@
   const deg = (r) => r * 180 / Math.PI;
 
   function nowLocalString(d) {
-    // Human readable, local time
     const pad2 = (n) => String(n).padStart(2, '0');
-    const yyyy = d.getFullYear();
-    const mm = pad2(d.getMonth()+1);
-    const dd = pad2(d.getDate());
-    const hh = pad2(d.getHours());
-    const mi = pad2(d.getMinutes());
-    const ss = pad2(d.getSeconds());
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
   }
 
-  function setSpinner(on) {
-    spinner.classList.toggle('show', !!on);
-  }
+  function setSpinner(on) { spinner.classList.toggle('show', !!on); }
 
-  function setDirty(v) {
-    dirty = !!v;
-    renderToolbar();
+  function setDirty(v) { dirty = !!v; renderToolbar(); }
+
+  function setFileBtnEnabled(labelEl, enabled) {
+    labelEl.classList.toggle('disabled', !enabled);
+    labelEl.tabIndex = enabled ? 0 : -1;
+    labelEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
   }
 
   function renderToolbar() {
-    // Save bullet
     btnSave.textContent = (dirty ? "• Save" : "Save");
-
-    // Enable/disable logic
     btnRefresh.disabled = loadingImage;
 
     const haveRegions = regions.length > 0;
     const regionsBusy = loadingRegions || savingRegions;
 
-    // While loading regions: most controls disabled
     regionSelect.disabled = regionsBusy || !haveRegions;
     regionName.disabled   = regionsBusy || !haveRegions;
     regionDesc.disabled   = regionsBusy || !haveRegions;
@@ -374,24 +363,15 @@
     btnNext.disabled   = regionsBusy || !haveRegions;
     btnDel.disabled    = regionsBusy || !haveRegions;
     btnSave.disabled   = regionsBusy || !haveRegions;
-    btnRevert.disabled = regionsBusy && !haveRegions; // per prompt: if fail, allow revert retry; here we keep enabled unless currently loading
-    if (loadingRegions) btnRevert.disabled = true;
+    btnRevert.disabled = !!loadingRegions;
 
     btnAdd.disabled    = regionsBusy || !imageReady;
 
-    // File buttons are labels
     setFileBtnEnabled(btnFileSave, !regionsBusy && haveRegions);
-    setFileBtnEnabled(btnFileLoad, !loadingRegions); // load from file even if no regions
-  }
-
-  function setFileBtnEnabled(labelEl, enabled) {
-    labelEl.classList.toggle('disabled', !enabled);
-    labelEl.tabIndex = enabled ? 0 : -1;
-    labelEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    setFileBtnEnabled(btnFileLoad, !loadingRegions);
   }
 
   function imageToCanvas(p) {
-    // p in IMAGE PIXELS -> canvas pixels
     if (!dispRect) return {x:0,y:0};
     const sx = dispRect.w / imgW;
     const sy = dispRect.h / imgH;
@@ -399,7 +379,6 @@
   }
 
   function canvasToImage(p) {
-    // p in canvas CSS px -> IMAGE PIXELS
     if (!dispRect) return {x:0,y:0};
     const sx = imgW / dispRect.w;
     const sy = imgH / dispRect.h;
@@ -407,12 +386,9 @@
   }
 
   function updateDispRect() {
-    // Determine where the image is actually drawn within the card
     const stageRect = card.getBoundingClientRect();
     const imgRect = photo.getBoundingClientRect();
 
-    // The <img> is centered within the card (flex). Its rect is the displayed image.
-    // Convert to coordinates relative to card.
     dispRect = {
       x: imgRect.left - stageRect.left,
       y: imgRect.top  - stageRect.top,
@@ -422,25 +398,20 @@
       stageH: stageRect.height,
     };
 
-    // Resize canvas to device pixels for crisp drawing
     const dpr = window.devicePixelRatio || 1;
     overlay.width  = Math.max(1, Math.round(stageRect.width * dpr));
     overlay.height = Math.max(1, Math.round(stageRect.height * dpr));
     overlay.style.width = `${stageRect.width}px`;
     overlay.style.height = `${stageRect.height}px`;
 
-    // Scale drawing ops to CSS px
     const ctx = overlay.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function ensureMinSizes(r) {
-    // Clamp to minimum sizes: width>=64, height>=32
     const g = r.geometry;
-    const w0 = g.width, h0 = g.height;
     g.width = Math.max(64, Math.round(g.width));
     g.height = Math.max(32, Math.round(g.height));
-    if (g.width !== w0 || g.height !== h0) setDirty(true);
   }
 
   function uniqueRegionName() {
@@ -474,14 +445,130 @@
       opt.textContent = `${idx}: ${r.name}`;
       regionSelect.appendChild(opt);
     });
-    if (regions.length) {
-      regionSelect.value = String(selected);
-    }
+    if (regions.length) regionSelect.value = String(selected);
   }
 
   function getCssVar(name, fallback) {
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback;
+  }
+
+  // ---------- Geometry ----------
+  function regionCornersImage(g) {
+    const cx = g.cx, cy = g.cy, w = g.width, h = g.height;
+    const th = -rad(g.rotation_deg || 0);
+    const c = Math.cos(th), s = Math.sin(th);
+    const pts = [
+      {x:-w/2, y:-h/2}, // TL (local)
+      {x: w/2, y:-h/2}, // TR
+      {x: w/2, y: h/2}, // BR
+      {x:-w/2, y: h/2}, // BL
+    ];
+    return pts.map(p => ({ x: cx + p.x*c - p.y*s, y: cy + p.x*s + p.y*c }));
+  }
+
+  function pointInRegionImage(px, py, g) {
+    const th = -rad(g.rotation_deg || 0);
+    const dx = px - g.cx, dy = py - g.cy;
+    const lx = dx*Math.cos(th) - dy*Math.sin(th);
+    const ly = dx*Math.sin(th) + dy*Math.cos(th);
+    return (Math.abs(lx) <= g.width/2) && (Math.abs(ly) <= g.height/2);
+  }
+
+  function pickRegionAtImage(px, py) {
+    if (!regions.length) return null;
+    const inside = [];
+    for (let i=0;i<regions.length;i++) {
+      if (pointInRegionImage(px, py, regions[i].geometry)) inside.push(i);
+    }
+    if (!inside.length) return null;
+    if (inside.includes(selected)) return selected;
+    let best = inside[0], bestD = Infinity;
+    for (const i of inside) {
+      const g = regions[i].geometry;
+      const d = (g.cx - px)*(g.cx - px) + (g.cy - py)*(g.cy - py);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  // Handles: common model:
+  // - 8 resize handles at corners + edge midpoints
+  // - 1 rotation handle above top edge midpoint, connected with a line
+  const HANDLE_R = 10;      // px hit radius
+  const ROT_OFFSET = 28;    // px from top edge midpoint outward
+
+  function getHandlesCanvas(g) {
+    const cornersImg = regionCornersImage(g); // TL,TR,BR,BL in that order
+    const corners = cornersImg.map(imageToCanvas);
+    const [tl,tr,br,bl] = corners;
+
+    const mid = (a,b)=>({x:(a.x+b.x)/2, y:(a.y+b.y)/2});
+    const tm = mid(tl,tr);
+    const rm = mid(tr,br);
+    const bm = mid(br,bl);
+    const lm = mid(bl,tl);
+
+    // outward normal from top edge (tl->tr): rotate edge dir left
+    const ex = tr.x - tl.x, ey = tr.y - tl.y;
+    const el = Math.hypot(ex,ey) || 1;
+    const nx = -ey/el, ny = ex/el; // this points "outward" relative to point order (TL->TR)
+    const rot = { x: tm.x + nx*ROT_OFFSET, y: tm.y + ny*ROT_OFFSET };
+
+    return [
+      {id:'tl', type:'resize', x:tl.x, y:tl.y, cursor:'nwse-resize', opp:'br'},
+      {id:'tr', type:'resize', x:tr.x, y:tr.y, cursor:'nesw-resize', opp:'bl'},
+      {id:'br', type:'resize', x:br.x, y:br.y, cursor:'nwse-resize', opp:'tl'},
+      {id:'bl', type:'resize', x:bl.x, y:bl.y, cursor:'nesw-resize', opp:'tr'},
+
+      {id:'tm', type:'resize', x:tm.x, y:tm.y, cursor:'ns-resize', opp:'bm'},
+      {id:'rm', type:'resize', x:rm.x, y:rm.y, cursor:'ew-resize', opp:'lm'},
+      {id:'bm', type:'resize', x:bm.x, y:bm.y, cursor:'ns-resize', opp:'tm'},
+      {id:'lm', type:'resize', x:lm.x, y:lm.y, cursor:'ew-resize', opp:'rm'},
+
+      {id:'rot', type:'rotate', x:rot.x, y:rot.y, cursor:'grab', ref:'tm', nx, ny}
+    ];
+  }
+
+  function handleHitTest(pCanvas, g) {
+    const hs = getHandlesCanvas(g);
+    // Priority: rotation, then resize
+    const rot = hs.find(h => h.id === 'rot');
+    if (rot && (Math.hypot(pCanvas.x-rot.x, pCanvas.y-rot.y) <= HANDLE_R)) return rot;
+
+    for (const h of hs) {
+      if (h.type !== 'resize') continue;
+      if (Math.hypot(pCanvas.x-h.x, pCanvas.y-h.y) <= HANDLE_R) return h;
+    }
+    return null;
+  }
+
+  function canvasToLocalImage(pCanvas, g0) {
+    // Convert a canvas point into the region-local coordinates (image px) using g0 rotation and center.
+    const pImg = canvasToImage(pCanvas);
+    const th = -rad(g0.rotation_deg || 0);
+    const dx = pImg.x - g0.cx, dy = pImg.y - g0.cy;
+    return {
+      x: dx*Math.cos(th) - dy*Math.sin(th),
+      y: dx*Math.sin(th) + dy*Math.cos(th),
+      pImg
+    };
+  }
+
+  function localToImageDelta(pLocal, g0) {
+    // Convert local (image px) delta into image delta using g0 rotation.
+    const th = -rad(g0.rotation_deg || 0);
+    const c = Math.cos(th), s = Math.sin(th);
+    return { x: pLocal.x*c + pLocal.y*s, y: -pLocal.x*s + pLocal.y*c };
+  }
+
+  function localOfHandle(id, g0) {
+    const w = g0.width, h = g0.height;
+    const map = {
+      tl:{x:-w/2,y:-h/2}, tr:{x:w/2,y:-h/2}, br:{x:w/2,y:h/2}, bl:{x:-w/2,y:h/2},
+      tm:{x:0,y:-h/2}, rm:{x:w/2,y:0}, bm:{x:0,y:h/2}, lm:{x:-w/2,y:0}
+    };
+    return map[id] ? {x:map[id].x, y:map[id].y} : {x:0,y:0};
   }
 
   // ---------- Drawing ----------
@@ -491,46 +578,25 @@
     const stageRect = card.getBoundingClientRect();
     ctx.clearRect(0, 0, stageRect.width, stageRect.height);
 
-    // No overlays until image ready + have natural dimensions
     if (!imageReady || !regions.length || !imgW || !imgH) return;
 
-    // Draw regions: largest index first (behind), index 0 last (front), selected on top of all.
     const indices = regions.map((_, i) => i).sort((a,b) => b-a);
     const sel = selected;
     const ordered = indices.filter(i => i !== sel).concat(sel);
 
-    for (const i of ordered) {
-      drawRegion(ctx, regions[i], i, i === sel);
-    }
+    for (const i of ordered) drawRegion(ctx, regions[i], i, i===sel);
   }
 
   function drawRegion(ctx, r, idx, isSelected) {
     const g = r.geometry;
     const color = isSelected ? getCssVar('--wire-selected', 'rgba(255,220,70,0.98)')
                              : getCssVar('--wire', 'rgba(200,200,200,0.95)');
-
     const outline = getCssVar('--wire-outline', 'rgba(0,0,0,0.85)');
     const wCol = parseFloat(getCssVar('--wire-width', '2.25')) || 2.25;
     const wOut = parseFloat(getCssVar('--wire-outline-width', '4.75')) || 4.75;
 
-    const cx = g.cx, cy = g.cy;
-    const w = g.width, h = g.height;
+    const corners = regionCornersImage(g).map(imageToCanvas);
 
-    const theta = -rad(g.rotation_deg || 0); // draw in y-down canvas; negative to match CCW semantics
-    const cos = Math.cos(theta), sin = Math.sin(theta);
-
-    // Corner points in IMAGE pixels (unscaled)
-    const corners = [
-      {x: -w/2, y: -h/2},
-      {x:  w/2, y: -h/2},
-      {x:  w/2, y:  h/2},
-      {x: -w/2, y:  h/2},
-    ].map(p => ({
-      x: cx + p.x*cos - p.y*sin,
-      y: cy + p.x*sin + p.y*cos
-    })).map(imageToCanvas);
-
-    // Outline then main stroke (wireframe)
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
@@ -546,191 +612,98 @@
     ctx.strokeStyle = color;
     ctx.lineWidth = wCol;
     ctx.stroke();
-    // Label box (rotates with region), drawn in DISPLAY pixels (constant on screen).
+
+    // Label box: square corners, display-pixel sizing
     const label = String(idx);
 
-    const c = imageToCanvas({x: cx, y: cy});
+    const c = imageToCanvas({x:g.cx,y:g.cy});
+    const th = -rad(g.rotation_deg || 0);
+
+    // Compute display size of region
     const sx = dispRect.w / imgW;
     const sy = dispRect.h / imgH;
-    const wDisp = w * sx;
-    const hDisp = h * sy;
+    const wDisp = g.width * sx;
+    const hDisp = g.height * sy;
 
     ctx.save();
     ctx.translate(c.x, c.y);
-    ctx.rotate(theta);
+    ctx.rotate(th);
 
-    // Box height: 16 px normally, but at most 50% of region height (in display px).
     const boxH = Math.max(8, Math.min(16, 0.5 * hDisp));
     const padX = Math.max(2, Math.round(boxH * 0.25));
-    const radius = Math.max(3, Math.round(boxH * 0.35));
-
     const fontPx = Math.max(9, Math.round(boxH * 0.70));
     ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
     ctx.textBaseline = 'middle';
 
     const textW = ctx.measureText(label).width;
-    let boxW = textW + 2 * padX;
-
-    // Width: cropped to max region width if needed; otherwise follows text length.
+    let boxW = textW + 2*padX;
     boxW = Math.min(boxW, Math.max(1, wDisp));
 
     const x0 = -wDisp/2;
     const y0 = -hDisp/2;
 
-    // Box with outline
-    roundRect(ctx, x0, y0, boxW, boxH, radius);
-    ctx.fillStyle = color; ctx.fill();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = outline;
     ctx.lineWidth = 2;
-    ctx.strokeStyle = outline; ctx.stroke();
 
-    // Clip text to box width (when cropped)
+    ctx.beginPath();
+    ctx.rect(x0, y0, boxW, boxH);
+    ctx.fill();
+    ctx.stroke();
+
     ctx.save();
     ctx.beginPath();
-    roundRect(ctx, x0, y0, boxW, boxH, radius);
+    ctx.rect(x0, y0, boxW, boxH);
     ctx.clip();
 
     ctx.fillStyle = '#000';
     ctx.fillText(label, x0 + padX, y0 + boxH/2);
     ctx.restore();
 
-    // Handles for selected region only (drawn in display pixels)
-    if (isSelected) {
-      const hs = handleSizesCanvasPx(g);
-      drawHandlesCanvasLocal(ctx, hs, color, outline);
-    }
-
     ctx.restore();
+
+    if (isSelected) drawHandles(ctx, g, color, outline);
   }
 
-  function roundRect(ctx, x, y, w, h, r) {
-    const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-    ctx.beginPath();
-    ctx.moveTo(x + rr, y);
-    ctx.arcTo(x + w, y, x + w, y + h, rr);
-    ctx.arcTo(x + w, y + h, x, y + h, rr);
-    ctx.arcTo(x, y + h, x, y, rr);
-    ctx.arcTo(x, y, x + w, y, rr);
-    ctx.closePath();
-  }
+  function drawHandles(ctx, g, color, outline) {
+    const hs = getHandlesCanvas(g);
+    const rot = hs.find(h => h.id==='rot');
+    const tm  = hs.find(h => h.id==='tm');
 
-  function handleSizesCanvasPx(g) {
-    // Handle sizing in DISPLAY (canvas/CSS) pixels to keep them usable at any zoom.
-    const minHandle = 12; // px
-    const maxHandle = Math.max(dispRect?.w || 0, dispRect?.h || 0) * 0.05; // px
+    // Connector line to rotation handle
+    if (rot && tm) {
+      ctx.beginPath();
+      ctx.moveTo(tm.x, tm.y);
+      ctx.lineTo(rot.x, rot.y);
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 3;
+      ctx.stroke();
 
-    const sx = dispRect.w / imgW;
-    const sy = dispRect.h / imgH;
-    const wDisp = g.width * sx;
-    const hDisp = g.height * sy;
-
-    const wh = Math.max(minHandle, Math.min(0.5 * wDisp, maxHandle));                  // width-handle square size
-    const hh = Math.max(minHandle, Math.min(0.5 * hDisp, maxHandle));                  // height-handle square size
-    const rd = Math.max(minHandle, Math.min(0.5 * Math.min(wDisp, hDisp), maxHandle)); // rotation-handle diameter
-
-    return { wh, hh, rd, wDisp, hDisp, sx, sy };
-  }
-
-  function drawHandlesCanvasLocal(ctx, hs, color, outline) {
-    // Local canvas coordinate system:
-    // - origin at region center (in canvas px)
-    // - rotated into region frame
-    const { wh, hh, rd, wDisp, hDisp } = hs;
-
-    const lw = 2;
-    const offset = 6; // px away from edge
-
-    // Width handle: square at right edge midpoint (outside the rectangle)
-    ctx.beginPath();
-    ctx.rect(wDisp/2 + offset, -wh/2, wh, wh);
-    ctx.fillStyle = color; ctx.fill();
-    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
-
-    // Height handle: square at top edge midpoint (outside the rectangle)
-    ctx.beginPath();
-    ctx.rect(-hh/2, -hDisp/2 - offset - hh, hh, hh);
-    ctx.fillStyle = color; ctx.fill();
-    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
-
-    // Rotation handle: circle at top-right corner
-    const rx = wDisp/2;
-    const ry = -hDisp/2;
-    const r = rd/2;
-    ctx.beginPath();
-    ctx.arc(rx, ry, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.fill();
-    ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
-  }
-
-  // ---------- Hit testing ----------
-  function pointInsideRegionImage(px, py, g) {
-    // Rotate point into region local frame
-    const theta = -rad(g.rotation_deg || 0);
-    const dx = px - g.cx;
-    const dy = py - g.cy;
-    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
-    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
-    return (Math.abs(lx) <= g.width/2) && (Math.abs(ly) <= g.height/2);
-  }
-
-  function handleHitTestCanvas(pCanvas, g) {
-    // Returns mode or null. Priority: width, height, rotation, move.
-    // Uses DISPLAY (canvas/CSS) pixel geometry so it stays usable.
-    const theta = -rad(g.rotation_deg || 0);
-
-    const c = imageToCanvas({x: g.cx, y: g.cy});
-    const dx = pCanvas.x - c.x;
-    const dy = pCanvas.y - c.y;
-
-    // rotate into region local frame (display px)
-    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
-    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
-
-    const hs = handleSizesCanvasPx(g);
-    const { wh, hh, rd, wDisp, hDisp } = hs;
-    const offset = 6;
-
-    // width handle square centered at (w/2 + offset + wh/2, 0)
-    const wx = wDisp/2 + offset + wh/2;
-    const wy = 0;
-    if (Math.abs(lx - wx) <= wh/2 && Math.abs(ly - wy) <= wh/2) return 'width';
-
-    // height handle square centered at (0, -h/2 - offset - hh/2)
-    const hx = 0;
-    const hy = -hDisp/2 - offset - hh/2;
-    if (Math.abs(lx - hx) <= hh/2 && Math.abs(ly - hy) <= hh/2) return 'height';
-
-    // rotation handle circle centered at (w/2, -h/2)
-    const rx = wDisp/2;
-    const ry = -hDisp/2;
-    const rr = rd/2;
-    const dd = (lx - rx)*(lx - rx) + (ly - ry)*(ly - ry);
-    if (dd <= rr*rr) return 'rotate';
-
-    // move: inside rectangle
-    if (Math.abs(lx) <= wDisp/2 && Math.abs(ly) <= hDisp/2) return 'move';
-    return null;
-  }
-
-  function pickRegionAtImage(px, py) {
-    if (!regions.length) return null;
-
-    const inside = [];
-    for (let i=0;i<regions.length;i++) {
-      if (pointInsideRegionImage(px, py, regions[i].geometry)) inside.push(i);
+      ctx.beginPath();
+      ctx.moveTo(tm.x, tm.y);
+      ctx.lineTo(rot.x, rot.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
-    if (!inside.length) return null;
 
-    // Priority: already selected if it's in the list, else closest center to click.
-    if (inside.includes(selected)) return selected;
-
-    let best = inside[0];
-    let bestD = Infinity;
-    for (const i of inside) {
-      const g = regions[i].geometry;
-      const d = (g.cx - px)*(g.cx - px) + (g.cy - py)*(g.cy - py);
-      if (d < bestD) { bestD = d; best = i; }
+    // Resize handles: squares
+    for (const h of hs) {
+      if (h.type !== 'resize') continue;
+      const s = 10;
+      ctx.beginPath();
+      ctx.rect(h.x - s/2, h.y - s/2, s, s);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = outline; ctx.stroke();
     }
-    return best;
+
+    // Rotation handle: circle
+    if (rot) {
+      ctx.beginPath();
+      ctx.arc(rot.x, rot.y, 7, 0, Math.PI*2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = outline; ctx.stroke();
+    }
   }
 
   // ---------- API ----------
@@ -754,13 +727,12 @@
         }
       }));
       regions.forEach(ensureMinSizes);
-
       selected = 0;
       buildRegionSelect();
       syncSelectedToFields();
       setDirty(false);
     } catch (_) {
-      // deliberate: no user-facing errors
+      // no user-facing errors
     } finally {
       loadingRegions = false;
       renderToolbar();
@@ -790,10 +762,8 @@
         body
       });
       if (!res.ok) throw new Error('save failed');
-      // optional body; ignore
       setDirty(false);
     } catch (_) {
-      // no user-facing errors
     } finally {
       savingRegions = false;
       renderToolbar();
@@ -806,7 +776,6 @@
     renderToolbar();
     setSpinner(true);
     try {
-      // Always request a new capture, blocking
       const res = await fetch('/api/v1/images/full?new_capture=true&wait=true', { cache: 'no-store' });
       if (!res.ok) throw new Error('image fetch failed');
 
@@ -825,7 +794,6 @@
 
       lastRefresh.textContent = nowLocalString(new Date());
     } catch (_) {
-      // Keep previous image/placeholder
     } finally {
       loadingImage = false;
       setSpinner(false);
@@ -891,16 +859,13 @@
         setDirty(true);
         renderToolbar();
         redraw();
-      } catch (_) {
-        // no user-facing errors
-      }
+      } catch (_) {}
     };
     reader.readAsText(file);
   }
 
   // ---------- UI actions ----------
   btnRefresh.addEventListener('click', () => { if (!loadingImage) loadImageFromServer(); });
-
   btnPrev.addEventListener('click', () => selectIndex(selected - 1));
   btnNext.addEventListener('click', () => selectIndex(selected + 1));
 
@@ -926,11 +891,7 @@
     if (!regions.length) return;
     const del = selected;
     regions.splice(del, 1);
-    if (regions.length) {
-      selected = Math.min(del, regions.length - 1);
-    } else {
-      selected = 0;
-    }
+    selected = regions.length ? Math.min(del, regions.length - 1) : 0;
     buildRegionSelect();
     syncSelectedToFields();
     setDirty(true);
@@ -947,16 +908,11 @@
     selectIndex(i);
   });
 
-  function validateName(s) {
-    // Spec: must be identifier ^[A-Za-z_][A-Za-z0-9_]*$
-    const re = /^[A-Za-z_][A-Za-z0-9_]*$/;
-    return re.test(s);
-  }
+  function validateName(s) { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s); }
 
   regionName.addEventListener('input', () => {
     if (!regions.length) return;
     const s = regionName.value;
-    // Soft validation: if invalid, don't apply until it becomes valid.
     if (!validateName(s)) return;
     regions[selected].name = s;
     buildRegionSelect();
@@ -970,7 +926,6 @@
     setDirty(true);
   });
 
-  // File buttons
   btnFileSave.addEventListener('click', () => {
     if (btnFileSave.classList.contains('disabled')) return;
     doFileSave();
@@ -982,7 +937,6 @@
   });
   fileInput.addEventListener('change', () => doFileLoad(fileInput.files?.[0]));
 
-  // Keyboard: optional minimal support
   window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
     if (e.key === 'ArrowLeft') { e.preventDefault(); selectIndex(selected - 1); }
@@ -990,55 +944,82 @@
   });
 
   // ---------- Pointer interaction ----------
+  function withinImageArea(pCanvas) {
+    return dispRect &&
+      pCanvas.x >= dispRect.x && pCanvas.x <= dispRect.x + dispRect.w &&
+      pCanvas.y >= dispRect.y && pCanvas.y <= dispRect.y + dispRect.h;
+  }
+
   overlay.addEventListener('pointerdown', (e) => {
     if (!imageReady || !dispRect || !regions.length) return;
 
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-
-    // Only interact if inside displayed image area (not letterboxing)
-    if (pCanvas.x < dispRect.x || pCanvas.x > dispRect.x + dispRect.w ||
-        pCanvas.y < dispRect.y || pCanvas.y > dispRect.y + dispRect.h) {
-      return;
-    }
+    if (!withinImageArea(pCanvas)) return;
 
     const pImg = canvasToImage(pCanvas);
 
-    // If clicked on region (possibly not selected), select it first
     const pick = pickRegionAtImage(pImg.x, pImg.y);
     if (pick === null) return;
 
-    if (pick !== selected) {
-      selectIndex(pick);
-      // Refresh pImg and continue: allow immediate drag after selecting
-    }
+    if (pick !== selected) selectIndex(pick);
 
     const g = regions[selected].geometry;
-    const mode = handleHitTestCanvas(pCanvas, g);
-    if (!mode) return;
+    const h = handleHitTest(pCanvas, g);
+
+    let mode = 'move';
+    let handle = null;
+    if (h) { mode = h.type; handle = h; }
+    else if (!pointInRegionImage(pImg.x, pImg.y, g)) return;
 
     drag = {
-      mode,
-      start: { x: pImg.x, y: pImg.y },
-      region0: JSON.parse(JSON.stringify(g)),
-      pointerId: e.pointerId
+      mode: (mode === 'resize' ? 'resize' : mode),
+      handle,
+      pointerId: e.pointerId,
+      startCanvas: pCanvas,
+      startImg: pImg,
+      g0: JSON.parse(JSON.stringify(g)),
+      anchorLocal: null,
     };
+
+    if (drag.mode === 'resize') {
+      const opp = handle.opp;
+      drag.anchorLocal = localOfHandle(opp, drag.g0);
+    }
+
     overlay.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
 
   overlay.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.pointerId || !regions.length) return;
+    if (!dispRect) return;
+
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    const pImg = canvasToImage(pCanvas);
 
-    const g0 = drag.region0;
+    // Cursor feedback (when not dragging)
+    if (!drag && regions.length && withinImageArea(pCanvas)) {
+      const g = regions[selected].geometry;
+      const h = handleHitTest(pCanvas, g);
+      if (h) {
+        overlay.style.cursor = h.cursor || 'pointer';
+      } else {
+        const pImg = canvasToImage(pCanvas);
+        overlay.style.cursor = pointInRegionImage(pImg.x, pImg.y, g) ? 'move' : 'default';
+      }
+    } else if (!drag) {
+      overlay.style.cursor = 'default';
+    }
+
+    if (!drag || e.pointerId !== drag.pointerId || !regions.length) return;
+
     const g = regions[selected].geometry;
+    const g0 = drag.g0;
 
     if (drag.mode === 'move') {
-      const dx = pImg.x - drag.start.x;
-      const dy = pImg.y - drag.start.y;
+      const pImg = canvasToImage(pCanvas);
+      const dx = pImg.x - drag.startImg.x;
+      const dy = pImg.y - drag.startImg.y;
       g.cx = g0.cx + dx;
       g.cy = g0.cy + dy;
       setDirty(true);
@@ -1047,60 +1028,72 @@
     }
 
     if (drag.mode === 'rotate') {
+      const pImg = canvasToImage(pCanvas);
       const dx = pImg.x - g0.cx;
       const dy = pImg.y - g0.cy;
-      // rotation_deg = atan2(-(cursor_y - center_y), (cursor_x - center_x)) in degrees
       g.rotation_deg = deg(Math.atan2(-dy, dx));
       setDirty(true);
       redraw();
       return;
     }
 
-    // Width/height resize based on cursor projected onto local axes.
-    const theta = -rad(g0.rotation_deg || 0);
-    const dx = pImg.x - g0.cx;
-    const dy = pImg.y - g0.cy;
-    const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
-    const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
+    if (drag.mode === 'resize') {
+      const h = drag.handle;
+      const anchor = drag.anchorLocal;
 
-    if (drag.mode === 'width') {
-      g.width = Math.max(64, 2 * Math.abs(lx));
-      g.height = g0.height;
-      ensureMinSizes(regions[selected]);
+      const cur = canvasToLocalImage(pCanvas, g0); // {x,y,pImg} local in image px (using g0 rotation)
+      const pL = {x: cur.x, y: cur.y};
+
+      // Start with old values
+      let newW = g0.width;
+      let newH = g0.height;
+
+      // Determine which axes are active based on handle id
+      const id = h.id;
+      const affectsX = (id === 'tl' || id === 'tr' || id === 'br' || id === 'bl' || id === 'rm' || id === 'lm');
+      const affectsY = (id === 'tl' || id === 'tr' || id === 'br' || id === 'bl' || id === 'tm' || id === 'bm');
+
+      // For edge handles, ignore the non-affected coordinate by setting it to old value position.
+      if (!affectsX) pL.x = localOfHandle(id, g0).x; // keep x constant
+      if (!affectsY) pL.y = localOfHandle(id, g0).y; // keep y constant
+
+      newW = Math.abs(pL.x - anchor.x);
+      newH = Math.abs(pL.y - anchor.y);
+
+      newW = Math.max(64, newW);
+      newH = Math.max(32, newH);
+
+      // New center in local coords is midpoint between anchor and pointer
+      const centerLocal = { x: (anchor.x + pL.x)/2, y: (anchor.y + pL.y)/2 };
+      const dImg = localToImageDelta(centerLocal, g0);
+
+      g.cx = g0.cx + dImg.x;
+      g.cy = g0.cy + dImg.y;
+      g.width = newW;
+      g.height = newH;
+      g.rotation_deg = g0.rotation_deg;
+
       setDirty(true);
       redraw();
       return;
     }
-    if (drag.mode === 'height') {
-      g.height = Math.max(32, 2 * Math.abs(ly));
-      g.width = g0.width;
-      ensureMinSizes(regions[selected]);
-      setDirty(true);
-      redraw();
-      return;
-    }
   });
 
-  overlay.addEventListener('pointerup', (e) => {
+  function endDrag(e) {
     if (!drag || e.pointerId !== drag.pointerId) return;
     drag = null;
+    overlay.style.cursor = 'default';
     try { overlay.releasePointerCapture(e.pointerId); } catch {}
-  });
-  overlay.addEventListener('pointercancel', (e) => {
-    if (!drag || e.pointerId !== drag.pointerId) return;
-    drag = null;
-    try { overlay.releasePointerCapture(e.pointerId); } catch {}
-  });
+  }
+  overlay.addEventListener('pointerup', endDrag);
+  overlay.addEventListener('pointercancel', endDrag);
 
-  // Click to select (without drag)
+  // Click to select another region (without dragging)
   overlay.addEventListener('click', (e) => {
-    if (!imageReady || !dispRect || !regions.length) return;
+    if (drag || !imageReady || !dispRect || !regions.length) return;
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    if (pCanvas.x < dispRect.x || pCanvas.x > dispRect.x + dispRect.w ||
-        pCanvas.y < dispRect.y || pCanvas.y > dispRect.y + dispRect.h) {
-      return;
-    }
+    if (!withinImageArea(pCanvas)) return;
     const pImg = canvasToImage(pCanvas);
     const pick = pickRegionAtImage(pImg.x, pImg.y);
     if (pick !== null) selectIndex(pick);
@@ -1115,11 +1108,9 @@
     lastRefresh.textContent = '';
     renderToolbar();
 
-    // File button behavior
     btnFileSave.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btnFileSave.click(); }});
     btnFileLoad.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btnFileLoad.click(); }});
 
-    // On load: do both actions in any order
     loadRegionsFromServer();
     loadImageFromServer();
   }
