@@ -517,7 +517,7 @@
   }
 
   function drawHandles(ctx, wDisp, hDisp, color, outline) {
-    const size = 12;
+    const size = 14;
     const half = size/2;
     const rotR = 7;
     const rotOffset = 22;
@@ -533,6 +533,13 @@
       {k:'w',  x:-wDisp/2, y:0},
     ];
 
+    // Stem first so the top midpoint resize handle is drawn on top of it.
+    ctx.beginPath();
+    ctx.moveTo(0, -hDisp/2);
+    ctx.lineTo(0, -hDisp/2 - rotOffset + rotR);
+    ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
+
+    // Resize squares on top of stem
     for (const p of pts) {
       ctx.beginPath();
       ctx.rect(p.x - half, p.y - half, size, size);
@@ -540,16 +547,11 @@
       ctx.lineWidth = 2; ctx.strokeStyle = outline; ctx.stroke();
     }
 
-    // rotation circle above top edge (in local coords)
+    // Rotation circle on top
     ctx.beginPath();
     ctx.arc(0, -hDisp/2 - rotOffset, rotR, 0, Math.PI*2);
     ctx.fillStyle = color; ctx.fill();
     ctx.lineWidth = 2; ctx.strokeStyle = outline; ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(0, -hDisp/2);
-    ctx.lineTo(0, -hDisp/2 - rotOffset + rotR);
-    ctx.strokeStyle = outline; ctx.lineWidth = 2; ctx.stroke();
   }
 
   // ---------- Hit testing (DISPLAY pixels) ----------
@@ -573,7 +575,7 @@
   function hitTest(pCanvas, g) {
     // Returns {mode, handle?} or null. Handles are active even if outside box.
     const {lx, ly, wDisp, hDisp} = localFromCanvas(pCanvas, g);
-    const size = 12;
+    const size = 14;
     const half = size/2;
     const rotR = 7;
     const rotOffset = 22;
