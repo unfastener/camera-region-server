@@ -546,49 +546,57 @@
     ctx.strokeStyle = color;
     ctx.lineWidth = wCol;
     ctx.stroke();
-
-    // Label box (rotates with region)
-    const labelFont = getCssVar('--label-font', '13px system-ui');
-    ctx.font = labelFont;
+    // Label box (rotates with region), drawn in DISPLAY pixels (constant on screen).
     const label = String(idx);
 
-    const pad = parseFloat(getCssVar('--label-pad', '6')) || 6;
-    const radius = parseFloat(getCssVar('--label-radius', '6')) || 6;
-
-    // Draw label in local coords at top-left corner, rotated with region
-    // We draw using transform around center.
     const c = imageToCanvas({x: cx, y: cy});
     const sx = dispRect.w / imgW;
     const sy = dispRect.h / imgH;
+    const wDisp = w * sx;
+    const hDisp = h * sy;
 
     ctx.save();
     ctx.translate(c.x, c.y);
-    // Scale is already baked into imageToCanvas points; but for local coords we scale manually:
     ctx.rotate(theta);
-    ctx.scale(sx, sy);
 
-    const m = ctx.measureText(label);
-    const lw = m.width + 2*pad;
-    const lh = 16 + 2*pad; // fixed-ish height; OK for system-ui
-    const x0 = -w/2;
-    const y0 = -h/2;
+    // Box height: 16 px normally, but at most 50% of region height (in display px).
+    const boxH = Math.max(8, Math.min(16, 0.5 * hDisp));
+    const padX = Math.max(2, Math.round(boxH * 0.25));
+    const radius = Math.max(3, Math.round(boxH * 0.35));
 
-    // Filled box with outline
-    roundRect(ctx, x0, y0, lw, lh, radius / Math.max(sx, sy));
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.lineWidth = 2 / Math.max(sx, sy);
-    ctx.strokeStyle = outline;
-    ctx.stroke();
+    const fontPx = Math.max(9, Math.round(boxH * 0.70));
+    ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+    ctx.textBaseline = 'middle';
+
+    const textW = ctx.measureText(label).width;
+    let boxW = textW + 2 * padX;
+
+    // Width: cropped to max region width if needed; otherwise follows text length.
+    boxW = Math.min(boxW, Math.max(1, wDisp));
+
+    const x0 = -wDisp/2;
+    const y0 = -hDisp/2;
+
+    // Box with outline
+    roundRect(ctx, x0, y0, boxW, boxH, radius);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = outline; ctx.stroke();
+
+    // Clip text to box width (when cropped)
+    ctx.save();
+    ctx.beginPath();
+    roundRect(ctx, x0, y0, boxW, boxH, radius);
+    ctx.clip();
 
     ctx.fillStyle = '#000';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, x0 + pad, y0 + lh/2);
+    ctx.fillText(label, x0 + padX, y0 + boxH/2);
+    ctx.restore();
 
-    // Handles for selected region only
+    // Handles for selected region only (drawn in display pixels)
     if (isSelected) {
-      const hs = handleSizesImagePx(g);
-      drawHandlesLocal(ctx, w, h, hs, color, outline);
+      const hs = handleSizesCanvasPx(g);
+      drawHandlesCanvasLocal(ctx, hs, color, outline);
     }
 
     ctx.restore();
@@ -605,43 +613,47 @@
     ctx.closePath();
   }
 
-  function handleSizesImagePx(g) {
-    // Implements prompt heuristics in image pixels
-    const minHandle = 12; // image px
-    const maxHandle = Math.max(imgW, imgH) * 0.05;
+  function handleSizesCanvasPx(g) {
+    // Handle sizing in DISPLAY (canvas/CSS) pixels to keep them usable at any zoom.
+    const minHandle = 12; // px
+    const maxHandle = Math.max(dispRect?.w || 0, dispRect?.h || 0) * 0.05; // px
 
-    const w = g.width, h = g.height;
-    const wh = Math.max(minHandle, Math.min(0.5 * w, maxHandle));
-    const hh = Math.max(minHandle, Math.min(0.5 * h, maxHandle));
-    const rd = Math.max(minHandle, Math.min(0.5 * Math.min(w, h), maxHandle));
-    return { wh, hh, rd };
+    const sx = dispRect.w / imgW;
+    const sy = dispRect.h / imgH;
+    const wDisp = g.width * sx;
+    const hDisp = g.height * sy;
+
+    const wh = Math.max(minHandle, Math.min(0.5 * wDisp, maxHandle));                  // width-handle square size
+    const hh = Math.max(minHandle, Math.min(0.5 * hDisp, maxHandle));                  // height-handle square size
+    const rd = Math.max(minHandle, Math.min(0.5 * Math.min(wDisp, hDisp), maxHandle)); // rotation-handle diameter
+
+    return { wh, hh, rd, wDisp, hDisp, sx, sy };
   }
 
-  function drawHandlesLocal(ctx, w, h, hs, color, outline) {
-    // local coordinate system, origin at center, already scaled to image pixels.
-    // Width handle: square at right edge midpoint
-    const wh = hs.wh;
-    const hh = hs.hh;
-    const rd = hs.rd;
+  function drawHandlesCanvasLocal(ctx, hs, color, outline) {
+    // Local canvas coordinate system:
+    // - origin at region center (in canvas px)
+    // - rotated into region frame
+    const { wh, hh, rd, wDisp, hDisp } = hs;
 
-    // Outline width in local coords
     const lw = 2;
+    const offset = 6; // px away from edge
 
-    // Width handle
+    // Width handle: square at right edge midpoint (outside the rectangle)
     ctx.beginPath();
-    ctx.rect(w/2 + 6, -wh/2, wh, wh);
+    ctx.rect(wDisp/2 + offset, -wh/2, wh, wh);
     ctx.fillStyle = color; ctx.fill();
     ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
 
-    // Height handle (top edge midpoint)
+    // Height handle: square at top edge midpoint (outside the rectangle)
     ctx.beginPath();
-    ctx.rect(-hh/2, -h/2 - 6 - hh, hh, hh);
+    ctx.rect(-hh/2, -hDisp/2 - offset - hh, hh, hh);
     ctx.fillStyle = color; ctx.fill();
     ctx.lineWidth = lw; ctx.strokeStyle = outline; ctx.stroke();
 
-    // Rotation handle (top-right corner) as circle
-    const rx = w/2;
-    const ry = -h/2;
+    // Rotation handle: circle at top-right corner
+    const rx = wDisp/2;
+    const ry = -hDisp/2;
     const r = rd/2;
     ctx.beginPath();
     ctx.arc(rx, ry, r, 0, Math.PI * 2);
@@ -660,35 +672,42 @@
     return (Math.abs(lx) <= g.width/2) && (Math.abs(ly) <= g.height/2);
   }
 
-  function handleHitTestImage(px, py, g) {
-    // returns mode or null. Priority: width, height, rotation, move.
+  function handleHitTestCanvas(pCanvas, g) {
+    // Returns mode or null. Priority: width, height, rotation, move.
+    // Uses DISPLAY (canvas/CSS) pixel geometry so it stays usable.
     const theta = -rad(g.rotation_deg || 0);
-    const dx = px - g.cx;
-    const dy = py - g.cy;
+
+    const c = imageToCanvas({x: g.cx, y: g.cy});
+    const dx = pCanvas.x - c.x;
+    const dy = pCanvas.y - c.y;
+
+    // rotate into region local frame (display px)
     const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
     const ly = dx*Math.sin(theta) + dy*Math.cos(theta);
 
-    const hs = handleSizesImagePx(g);
-    const wh = hs.wh, hh = hs.hh, rd = hs.rd;
+    const hs = handleSizesCanvasPx(g);
+    const { wh, hh, rd, wDisp, hDisp } = hs;
+    const offset = 6;
 
-    // width handle square centered at (w/2 + 6 + wh/2, 0)
-    const wx = g.width/2 + 6 + wh/2;
+    // width handle square centered at (w/2 + offset + wh/2, 0)
+    const wx = wDisp/2 + offset + wh/2;
     const wy = 0;
     if (Math.abs(lx - wx) <= wh/2 && Math.abs(ly - wy) <= wh/2) return 'width';
 
-    // height handle square centered at (0, -h/2 - 6 - hh/2)
+    // height handle square centered at (0, -h/2 - offset - hh/2)
     const hx = 0;
-    const hy = -g.height/2 - 6 - hh/2;
+    const hy = -hDisp/2 - offset - hh/2;
     if (Math.abs(lx - hx) <= hh/2 && Math.abs(ly - hy) <= hh/2) return 'height';
 
     // rotation handle circle centered at (w/2, -h/2)
-    const rx = g.width/2;
-    const ry = -g.height/2;
+    const rx = wDisp/2;
+    const ry = -hDisp/2;
     const rr = rd/2;
     const dd = (lx - rx)*(lx - rx) + (ly - ry)*(ly - ry);
     if (dd <= rr*rr) return 'rotate';
 
-    if (Math.abs(lx) <= g.width/2 && Math.abs(ly) <= g.height/2) return 'move';
+    // move: inside rectangle
+    if (Math.abs(lx) <= wDisp/2 && Math.abs(ly) <= hDisp/2) return 'move';
     return null;
   }
 
@@ -995,7 +1014,7 @@
     }
 
     const g = regions[selected].geometry;
-    const mode = handleHitTestImage(pImg.x, pImg.y, g);
+    const mode = handleHitTestCanvas(pCanvas, g);
     if (!mode) return;
 
     drag = {
