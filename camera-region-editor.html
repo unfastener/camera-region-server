@@ -480,7 +480,7 @@
 
     // Index label (square corners) UNDER the wireframe
     const label = String(idx);
-    const boxH = Math.max(8, Math.min(16, 0.5 * hDisp));
+    const boxH = Math.max(8, Math.min(24, Math.max(1, hDisp)));
     const padX = Math.max(2, Math.round(boxH * 0.25));
     const fontPx = Math.max(9, Math.round(boxH * 0.70));
     ctx.font = `${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
@@ -982,13 +982,13 @@
 
       const h = drag.handle;
       if (h === 'nw') { fx =  w0/2; fy =  h0/2; }
-      if (h === 'n')  { fx =   0;   fy =  h0/2; py = -h0/2; } // keep x centered, only y changes
+      if (h === 'n')  { fx =   0;   fy =  h0/2; px = 0; }         // only y changes
       if (h === 'ne') { fx = -w0/2; fy =  h0/2; }
-      if (h === 'e')  { fx = -w0/2; fy =   0;   py = 0; }     // only x changes
+      if (h === 'e')  { fx = -w0/2; fy =   0;   py = 0; }         // only x changes
       if (h === 'se') { fx = -w0/2; fy = -h0/2; }
-      if (h === 's')  { fx =   0;   fy = -h0/2; py =  h0/2; } // only y changes
+      if (h === 's')  { fx =   0;   fy = -h0/2; px = 0; }         // only y changes
       if (h === 'sw') { fx =  w0/2; fy = -h0/2; }
-      if (h === 'w')  { fx =  w0/2; fy =   0;   py = 0; }     // only x changes
+      if (h === 'w')  { fx =  w0/2; fy =   0;   py = 0; }         // only x changes
 
       // New size in display px
       let wDisp = w0;
