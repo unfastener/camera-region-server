@@ -555,7 +555,8 @@
   // ---------- Hit testing (DISPLAY pixels) ----------
   function localFromCanvas(pCanvas, g) {
     const c = imageToCanvas({x:g.cx, y:g.cy});
-    const theta = -rad(g.rotation_deg || 0);
+    // NOTE: drawing uses theta_draw = -rot. World->local must use +rot.
+    const theta = rad(g.rotation_deg || 0);
     const dx = pCanvas.x - c.x;
     const dy = pCanvas.y - c.y;
     const lx = dx*Math.cos(theta) - dy*Math.sin(theta);
@@ -957,9 +958,11 @@
     }
 
     if (drag.mode === 'resize') {
-      // Symmetric resize around center in region-local DISPLAY coordinates
-      const theta0 = -rad(g0.rotation_deg || 0);
+      // Asymmetric resize: the dragged handle moves, the opposite side/corner stays fixed.
+      // Work in region-local DISPLAY coordinates, then convert back to image coords.
+      const theta0 = rad(g0.rotation_deg || 0); // world->local
       const c0 = drag.centerCanvas0;
+
       const ddx = pCanvas.x - c0.x;
       const ddy = pCanvas.y - c0.y;
       const lx = ddx*Math.cos(theta0) - ddy*Math.sin(theta0);
@@ -968,29 +971,61 @@
       const sx = dispRect.w / imgW;
       const sy = dispRect.h / imgH;
 
-      const wDisp0 = g0.width * sx;
-      const hDisp0 = g0.height * sy;
+      const w0 = g0.width * sx;
+      const h0 = g0.height * sy;
 
-      let wDisp = wDisp0;
-      let hDisp = hDisp0;
-
-      const ax = Math.abs(lx);
-      const ay = Math.abs(ly);
+      // Fixed point in local coords (relative to center) is the opposite handle.
+      let fx = 0, fy = 0;
+      let px = lx, py = ly; // pointer in local coords
 
       const h = drag.handle;
+      if (h === 'nw') { fx =  w0/2; fy =  h0/2; }
+      if (h === 'n')  { fx =   0;   fy =  h0/2; py = -h0/2; } // keep x centered, only y changes
+      if (h === 'ne') { fx = -w0/2; fy =  h0/2; }
+      if (h === 'e')  { fx = -w0/2; fy =   0;   py = 0; }     // only x changes
+      if (h === 'se') { fx = -w0/2; fy = -h0/2; }
+      if (h === 's')  { fx =   0;   fy = -h0/2; py =  h0/2; } // only y changes
+      if (h === 'sw') { fx =  w0/2; fy = -h0/2; }
+      if (h === 'w')  { fx =  w0/2; fy =   0;   py = 0; }     // only x changes
+
+      // New size in display px
+      let wDisp = w0;
+      let hDisp = h0;
+
       if (h === 'e' || h === 'w') {
-        wDisp = Math.max(2 * ax, 2);
-        hDisp = hDisp0;
+        wDisp = Math.abs(px - fx);
+        hDisp = h0;
       } else if (h === 'n' || h === 's') {
-        hDisp = Math.max(2 * ay, 2);
-        wDisp = wDisp0;
+        hDisp = Math.abs(py - fy);
+        wDisp = w0;
       } else {
-        wDisp = Math.max(2 * ax, 2);
-        hDisp = Math.max(2 * ay, 2);
+        wDisp = Math.abs(px - fx);
+        hDisp = Math.abs(py - fy);
       }
+
+      wDisp = Math.max(2, wDisp);
+      hDisp = Math.max(2, hDisp);
+
+      // New center in local coords (midpoint between pointer and fixed)
+      let cxL = (px + fx) / 2;
+      let cyL = (py + fy) / 2;
+
+      // For edge handles, constrain center along the non-changing axis
+      if (h === 'e' || h === 'w') cyL = 0;
+      if (h === 'n' || h === 's') cxL = 0;
+
+      // Convert new local-center offset to canvas delta: local->world uses R(theta_draw), theta_draw = -rot
+      const thetaDraw = -rad(g0.rotation_deg || 0);
+      const dcx = cxL*Math.cos(thetaDraw) - cyL*Math.sin(thetaDraw);
+      const dcy = cxL*Math.sin(thetaDraw) + cyL*Math.cos(thetaDraw);
+
+      // Apply to image-space center
+      g.cx = g0.cx + dcx * (imgW / dispRect.w);
+      g.cy = g0.cy + dcy * (imgH / dispRect.h);
 
       g.width  = Math.max(64, Math.round(wDisp / sx));
       g.height = Math.max(32, Math.round(hDisp / sy));
+
       setDirty(true);
       redraw();
       return;
