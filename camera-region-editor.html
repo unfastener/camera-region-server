@@ -7,6 +7,11 @@
   <style>
     :root{
       --gap: 16px;
+      --ctrl-h: 42px;
+      --toolbar-row-gap: 8px;
+      --toolbar-col-gap: 10px;
+      --button-cell-w: 132px;
+      --field-cell-w: 220px;
       --fg: #fff;
       --bg: #292929;
       --button-fg: #ddd;
@@ -44,39 +49,35 @@
     }
 
     .toolbar{
-      display:grid;
-      grid-template-columns: auto 1fr auto;
-      align-items:center;
-      gap: var(--gap);
-    }
-
-    .logo{
-      height: calc(2 * 42px + 8px);
-      width: 220px;
-      max-width: 28vw;
-      border-radius: 12px;
-      box-shadow: var(--drop-shadow);
-      background: url("/logo.png") no-repeat center / contain;
-      background-color: rgba(0,0,0,0.15);
-      user-select:none;
+      display:block;
     }
 
     .controls{
       display:grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
+      grid-template-columns:
+        var(--button-cell-w)
+        minmax(var(--field-cell-w), 1fr)
+        minmax(var(--field-cell-w), 1.2fr)
+        var(--button-cell-w)
+        var(--button-cell-w)
+        var(--button-cell-w);
+      grid-template-rows: var(--ctrl-h) var(--ctrl-h);
+      gap: var(--toolbar-row-gap) var(--toolbar-col-gap);
       min-width: 0;
+      align-items: stretch;
     }
 
-    .row{
-      display:flex;
-      align-items:center;
-      gap: 10px;
-      min-width:0;
-      flex-wrap: nowrap;
-    }
-
-    .row .spacer{ flex: 1; }
+    .cell-refresh{ grid-column: 1; grid-row: 1; }
+    .cell-timestamp{ grid-column: 1; grid-row: 2; }
+    .cell-region-select{ grid-column: 2; grid-row: 1; }
+    .cell-region-name{ grid-column: 3; grid-row: 1; }
+    .cell-region-desc{ grid-column: 2 / 4; grid-row: 2; }
+    .cell-nav{ grid-column: 4; grid-row: 1; }
+    .cell-edit{ grid-column: 4; grid-row: 2; }
+    .cell-save{ grid-column: 5; grid-row: 1; }
+    .cell-revert{ grid-column: 5; grid-row: 2; }
+    .cell-file-save{ grid-column: 6; grid-row: 1; }
+    .cell-file-load{ grid-column: 6; grid-row: 2; }
 
     button, input, select, label.filebtn{
       border: 1px solid rgba(255,255,255,0.10);
@@ -89,12 +90,21 @@
       letter-spacing: 0.2px;
       outline: none;
       transition: transform 80ms ease, opacity 80ms ease, border-color 120ms ease;
+      min-height: var(--ctrl-h);
+      height: var(--ctrl-h);
+      box-sizing: border-box;
+      width: 100%;
     }
 
     button:hover:not(:disabled), label.filebtn:hover{
       transform: translateY(-1px);
       border-color: rgba(255,255,255,0.22);
       cursor:pointer;
+    }
+
+    button:focus-visible, input:focus-visible, select:focus-visible, label.filebtn:focus-visible{
+      border-color: rgba(255,255,255,0.35);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.14), var(--drop-shadow);
     }
 
     button:active:not(:disabled), label.filebtn:active{
@@ -123,22 +133,81 @@
       opacity: 0.85;
       user-select:none;
       white-space: nowrap;
+      min-height: var(--ctrl-h);
+      line-height: var(--ctrl-h);
+      text-align: center;
+      padding: 0;
     }
 
-    .regionpicker{
-      display:flex;
-      gap: 10px;
-      align-items:center;
-      min-width: 0;
-      flex: 1;
+    #regionSelect{ min-width: 0; }
+    #regionName{ min-width: 0; }
+    #regionDesc{ min-width: 0; width: 100%; }
+
+    .pill{
+      display: inline-flex;
+      height: var(--ctrl-h);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--button-bg);
+      box-shadow: var(--drop-shadow);
+      width: 100%;
     }
 
-    #regionSelect{
-      width: 210px;
-      max-width: 20vw;
+    .pill__btn{
+      flex: 1 1 50%;
+      min-height: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      font: 700 18px/1 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      cursor: pointer;
     }
-    #regionName{ flex: 1; min-width: 0; }
-    #regionDesc{ flex: 1; min-width: 0; }
+
+    .pill__btn + .pill__btn{
+      border-left: 1px solid rgba(255,255,255,0.10);
+    }
+
+    .pill__btn:hover:not(:disabled){ background: rgba(255,255,255,0.07); }
+    .pill__btn:active:not(:disabled){ background: rgba(255,255,255,0.12); }
+    .pill__btn:focus-visible{
+      outline: 2px solid rgba(255,255,255,0.45);
+      outline-offset: -2px;
+    }
+
+    .pill__btn:disabled{
+      color: var(--button-fg-disabled);
+      background: transparent;
+      cursor: not-allowed;
+      opacity: 0.9;
+    }
+
+    .pill.disabled{
+      background: var(--button-bg-disabled);
+      box-shadow: none;
+      border-color: rgba(255,255,255,0.06);
+    }
+
+    .pill__btn--danger{
+      color: #a64a4a;
+    }
+
+    button, label.filebtn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    #btnSave.dirty::before{
+      content: "•";
+      color: #a64a4a;
+      font-size: 1.5em;
+      line-height: 1;
+      margin-right: 0.55em;
+    }
 
     .wrap{
       flex:1;
@@ -226,43 +295,33 @@
 <body>
   <div class="page">
     <div class="toolbar">
-      <div class="logo" aria-label="Logo"></div>
-
       <div class="controls">
-        <div class="row">
-          <button id="btnRefresh">Refresh</button>
-          <div class="small" id="lastRefresh">&nbsp;</div>
+        <button id="btnRefresh" class="cell-refresh">Refresh</button>
+        <select id="regionSelect" class="cell-region-select" disabled></select>
+        <input id="regionName" class="cell-region-name" type="text" placeholder="region_name" pattern="[A-Za-z_][A-Za-z0-9_]*" disabled />
+        <input id="regionDesc" class="cell-region-desc" type="text" placeholder="Description" maxlength="256" disabled />
+        <button id="btnSave" class="cell-save" disabled>Save</button>
+        <button id="btnRevert" class="cell-revert" disabled>Revert</button>
 
-          <div class="regionpicker">
-            <select id="regionSelect" disabled></select>
-            <input id="regionName" type="text" placeholder="region_name" disabled />
-          </div>
+        <label class="filebtn disabled cell-file-save" id="btnFileSave" title="Save regions to a file">
+          File Save
+        </label>
+        <label class="filebtn disabled cell-file-load" id="btnFileLoad" title="Open regions from a file">
+          File Open
+        </label>
+        <input id="fileInput" type="file" accept="application/json,.json" />
 
-          <button id="btnNext" disabled>Next</button>
-          <button id="btnAdd" disabled>Add</button>
-          <button id="btnSave" disabled>Save</button>
+        <div class="small cell-timestamp" id="lastRefresh">&nbsp;</div>
 
-          <label class="filebtn disabled" id="btnFileSave" title="Save regions to a file">
-            File Save
-          </label>
+        <div class="pill cell-nav" id="pillNav" role="group" aria-label="Region select navigation">
+          <button id="btnPrev" class="pill__btn" type="button" aria-label="Previous region" tabindex="-1" disabled>▴</button>
+          <button id="btnNext" class="pill__btn" type="button" aria-label="Next region" tabindex="-1" disabled>▾</button>
         </div>
-
-        <div class="row">
-          <div class="spacer"></div>
-          <input id="regionDesc" type="text" placeholder="Description" disabled />
-
-          <button id="btnPrev" disabled>Prev</button>
-          <button id="btnDel" disabled>Del</button>
-          <button id="btnRevert" disabled>Revert</button>
-
-          <label class="filebtn disabled" id="btnFileLoad" title="Load regions from a file">
-            File Load
-          </label>
-          <input id="fileInput" type="file" accept="application/json,.json" />
+        <div class="pill cell-edit" id="pillEdit" role="group" aria-label="Region edit actions">
+          <button id="btnAdd" class="pill__btn" type="button" aria-label="Add region" tabindex="-1" disabled>+</button>
+          <button id="btnDel" class="pill__btn pill__btn--danger" type="button" aria-label="Delete region" tabindex="-1" disabled>🗑</button>
         </div>
       </div>
-
-      <div></div>
     </div>
 
     <div class="wrap">
@@ -297,6 +356,8 @@
   const btnRevert  = document.getElementById('btnRevert');
   const btnFileSave= document.getElementById('btnFileSave');
   const btnFileLoad= document.getElementById('btnFileLoad');
+  const pillNav    = document.getElementById('pillNav');
+  const pillEdit   = document.getElementById('pillEdit');
 
   const lastRefresh = document.getElementById('lastRefresh');
 
@@ -336,6 +397,11 @@
     return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
   }
 
+  function unixSecondsToLocalString(sec) {
+    if (!Number.isFinite(sec)) return '';
+    return nowLocalString(new Date(sec * 1000));
+  }
+
   function setSpinner(on) { spinner.classList.toggle('show', !!on); }
 
   function setDirty(v) { dirty = !!v; renderToolbar(); }
@@ -347,7 +413,8 @@
   }
 
   function renderToolbar() {
-    btnSave.textContent = (dirty ? "• Save" : "Save");
+    btnSave.textContent = "Save";
+    btnSave.classList.toggle('dirty', dirty);
 
     btnRefresh.disabled = loadingImage;
 
@@ -364,6 +431,9 @@
     btnSave.disabled   = regionsBusy || !haveRegions;
     btnRevert.disabled = loadingRegions;
     btnAdd.disabled    = regionsBusy || !imageReady;
+
+    pillNav.classList.toggle('disabled', btnPrev.disabled && btnNext.disabled);
+    pillEdit.classList.toggle('disabled', btnAdd.disabled && btnDel.disabled);
 
     setFileBtnEnabled(btnFileSave, !regionsBusy && haveRegions);
     setFileBtnEnabled(btnFileLoad, !loadingRegions);
@@ -399,8 +469,11 @@
   }
 
   function ensureMinSizes(r) {
+    const w0 = r.geometry.width;
+    const h0 = r.geometry.height;
     r.geometry.width = Math.max(64, Math.round(r.geometry.width));
     r.geometry.height = Math.max(32, Math.round(r.geometry.height));
+    return r.geometry.width !== w0 || r.geometry.height !== h0;
   }
 
   function uniqueRegionName() {
@@ -440,6 +513,71 @@
   function getCssVar(name, fallback) {
     const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || fallback;
+  }
+
+  function validateName(s) { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s); }
+
+  function normalizeDescription(v) {
+    const s = String(v ?? '');
+    return s.length > 256 ? s.slice(0, 256) : s;
+  }
+
+  function parseRegionsPayloadStrict(obj) {
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.regions)) return null;
+    for (const r of obj.regions) {
+      if (!r || typeof r !== 'object') return null;
+      if (typeof r.name !== 'string') return null;
+      if (r.description !== undefined && typeof r.description !== 'string') return null;
+      if (!r.geometry || typeof r.geometry !== 'object') return null;
+      const g = r.geometry;
+      if (![g.cx, g.cy, g.width, g.height, g.rotation_deg].every(Number.isFinite)) return null;
+    }
+    return obj.regions;
+  }
+
+  function normalizeRegions(rawRegions) {
+    const usedNames = new Set();
+    let changed = false;
+
+    const normalized = rawRegions.map((r) => {
+      let name = String(r.name ?? '').trim();
+      const originalName = name;
+      if (!validateName(name) || usedNames.has(name)) {
+        changed = true;
+        let n = 0;
+        while (true) {
+          const candidate = `region_${n}`;
+          if (!usedNames.has(candidate)) {
+            name = candidate;
+            break;
+          }
+          n += 1;
+        }
+      }
+      usedNames.add(name);
+
+      const sourceDesc = String(r.description ?? '');
+      const description = normalizeDescription(sourceDesc);
+      if (description !== sourceDesc) changed = true;
+
+      const region = {
+        name,
+        description,
+        geometry: {
+          cx: Number(r.geometry?.cx ?? 0),
+          cy: Number(r.geometry?.cy ?? 0),
+          width: Number(r.geometry?.width ?? 64),
+          height: Number(r.geometry?.height ?? 32),
+          rotation_deg: Number(r.geometry?.rotation_deg ?? 0),
+        }
+      };
+
+      if (name !== originalName) changed = true;
+      if (ensureMinSizes(region)) changed = true;
+      return region;
+    });
+
+    return { normalized, changed };
   }
 
   // ---------- Drawing ----------
@@ -670,23 +808,14 @@
       const res = await fetch('/api/v1/regions', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const data = await res.json();
-      const rr = Array.isArray(data.regions) ? data.regions : [];
-      regions = rr.map(r => ({
-        name: String(r.name ?? ''),
-        description: String(r.description ?? ''),
-        geometry: {
-          cx: Number(r.geometry?.cx ?? 0),
-          cy: Number(r.geometry?.cy ?? 0),
-          width: Number(r.geometry?.width ?? 64),
-          height: Number(r.geometry?.height ?? 32),
-          rotation_deg: Number(r.geometry?.rotation_deg ?? 0),
-        }
-      }));
-      regions.forEach(ensureMinSizes);
+      const rr = parseRegionsPayloadStrict(data);
+      if (!rr) throw new Error();
+      const normalized = normalizeRegions(rr);
+      regions = normalized.normalized;
       selected = 0;
       buildRegionSelect();
       syncSelectedToFields();
-      setDirty(false);
+      setDirty(normalized.changed);
     } catch (_) {
     } finally {
       loadingRegions = false; renderToolbar(); redraw();
@@ -726,6 +855,9 @@
     try {
       const res = await fetch('/api/v1/images/full?new_capture=true&wait=true', { cache: 'no-store' });
       if (!res.ok) throw new Error();
+      const tsHeader = res.headers.get('X-Capture-Timestamp');
+      const ts = tsHeader === null ? NaN : Number(tsHeader);
+      lastRefresh.textContent = unixSecondsToLocalString(ts) || '';
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       photo.onload = () => {
@@ -738,7 +870,6 @@
         renderToolbar();
       };
       photo.src = url;
-      lastRefresh.textContent = nowLocalString(new Date());
     } catch (_) {
     } finally {
       loadingImage = false; setSpinner(false); renderToolbar();
@@ -784,19 +915,9 @@
     reader.onload = () => {
       try {
         const obj = JSON.parse(String(reader.result || ''));
-        const rr = Array.isArray(obj.regions) ? obj.regions : [];
-        regions = rr.map(r => ({
-          name: String(r.name ?? ''),
-          description: String(r.description ?? ''),
-          geometry: {
-            cx: Number(r.geometry?.cx ?? 0),
-            cy: Number(r.geometry?.cy ?? 0),
-            width: Number(r.geometry?.width ?? 64),
-            height: Number(r.geometry?.height ?? 32),
-            rotation_deg: Number(r.geometry?.rotation_deg ?? 0),
-          }
-        }));
-        regions.forEach(ensureMinSizes);
+        const rr = parseRegionsPayloadStrict(obj);
+        if (!rr) return;
+        regions = normalizeRegions(rr).normalized;
         selected = 0;
         buildRegionSelect();
         syncSelectedToFields();
@@ -852,12 +973,11 @@
     if (Number.isFinite(i)) selectIndex(i);
   });
 
-  function validateName(s) { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s); }
-
   regionName.addEventListener('input', () => {
     if (!regions.length) return;
-    const s = regionName.value;
+    const s = regionName.value.trim();
     if (!validateName(s)) return;
+    if (regions.some((r, i) => i !== selected && r.name === s)) return;
     regions[selected].name = s;
     buildRegionSelect();
     setDirty(true);
@@ -866,7 +986,9 @@
 
   regionDesc.addEventListener('input', () => {
     if (!regions.length) return;
-    regions[selected].description = regionDesc.value;
+    const normalized = normalizeDescription(regionDesc.value);
+    if (normalized !== regionDesc.value) regionDesc.value = normalized;
+    regions[selected].description = normalized;
     setDirty(true);
   });
 
@@ -880,8 +1002,17 @@
 
   window.addEventListener('keydown', (e) => {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); selectIndex(selected - 1); }
-    if (e.key === 'ArrowRight'){ e.preventDefault(); selectIndex(selected + 1); }
+    const k = e.key;
+    const lower = k.length === 1 ? k.toLowerCase() : k;
+
+    if (k === 'ArrowUp') { e.preventDefault(); if (!btnPrev.disabled) btnPrev.click(); return; }
+    if (k === 'ArrowDown') { e.preventDefault(); if (!btnNext.disabled) btnNext.click(); return; }
+    if (lower === 'n' || k === '+') { e.preventDefault(); if (!btnAdd.disabled) btnAdd.click(); return; }
+    if (lower === 'd' || k === 'Delete' || k === 'Backspace') { e.preventDefault(); if (!btnDel.disabled) btnDel.click(); return; }
+    if (lower === 's') { e.preventDefault(); if (!btnSave.disabled) btnSave.click(); return; }
+    if (lower === 'r') { e.preventDefault(); if (!btnRevert.disabled) btnRevert.click(); return; }
+    if (lower === 'w') { e.preventDefault(); if (!btnFileSave.classList.contains('disabled')) btnFileSave.click(); return; }
+    if (lower === 'o') { e.preventDefault(); if (!btnFileLoad.classList.contains('disabled')) btnFileLoad.click(); return; }
   });
 
   // ---------- Pointer interaction ----------
