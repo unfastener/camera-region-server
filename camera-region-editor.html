@@ -345,9 +345,9 @@
           <canvas id="overlay"></canvas>
 
           <div class="pill zoompill" id="pillZoom" role="group" aria-label="Zoom controls">
-            <button id="btnZoomIn" class="pill__btn" type="button" aria-label="Zoom in">🔍+</button>
-            <button id="btnZoomAll" class="pill__btn" type="button" aria-label="Show all">🔍</button>
-            <button id="btnZoomOut" class="pill__btn" type="button" aria-label="Zoom out">🔍−</button>
+            <button id="btnZoomIn" class="pill__btn" type="button" aria-label="Zoom in" tabindex="-1">🔍+</button>
+            <button id="btnZoomAll" class="pill__btn" type="button" aria-label="Show all" tabindex="-1">🔍</button>
+            <button id="btnZoomOut" class="pill__btn" type="button" aria-label="Zoom out" tabindex="-1">🔍−</button>
           </div>
 
           <div class="spinner" id="spinner" aria-label="Loading">
@@ -1083,7 +1083,9 @@
 
   regionName.addEventListener('input', () => {
     if (!hasRealSelection()) return;
-    const s = regionName.value.trim();
+    const filtered = regionName.value.replace(/[^A-Za-z0-9_]/g, '');
+    if (filtered !== regionName.value) regionName.value = filtered;
+    const s = filtered.trim();
     if (!validateName(s)) return;
     if (regions.some((r, i) => i !== selected && r.name === s)) return;
     regions[selected].name = s;
@@ -1109,6 +1111,7 @@
   fileInput.addEventListener('change', () => doFileLoad(fileInput.files?.[0]));
 
   window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
     const k = e.key;
     const lower = k.length === 1 ? k.toLowerCase() : k;
