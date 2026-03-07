@@ -1,0 +1,27 @@
+"No region selected" state
+
+Region menu should have a fake region for that as the first entry, saying "--".
+Clicking outside any region in the picture area, including outside the picture
+pixels, selects that state.
+
+Name and description are disabled when that state is selected, and show the
+placeholder text. [Del] is also disabled. [Add] adds at the end, like normally.
+
+[Up] and [Down] will go through that state like it was a real region.
+
+
+Picture zoom and pan
+
+Dragging the picture with the mouse pans it. Mouse scroll wheel (vertical) zooms
+the picture in and out. Region boxes zoom and move correctly along with the
+picture, except that the lines and text in the region boxes keep their size.
+Only the corner points change to match the picture.
+
+Also include a [Zoom in | Show All | Zoom out] pill button on the top right
+corner of the picture area. Instead of text, use Unicode magnifying glass
+symbols. Even if this button has three parts, it should be the same width as
+the other buttons. The symbols can be packed tighter.
+
+When a picture is first loaded, it will be in the "Show All" zoom level. Further
+presses of [Refresh] will not reset the zoom level, allowing precision
+positioning of regions while observing changes.

@@ -1,0 +1,7 @@
+Need to remove the logo completely. There simply isn't enough horizontal space
+for it.
+
+Buttons don't show when they are selected with tabbing. They need some subtle
+selection marker or color change.
+
+Let's keep [Save], [Revert], [File Save] and [File Load] as text, for now.

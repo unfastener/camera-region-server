@@ -1,0 +1,57 @@
+Replace "Next" and "Prev" buttons with a pill-shaped segmented button with
+up and down pointing Unicode triangles. The pill is horizontal and goes where
+the "Next" button is right now.
+
+Replace "Add" and "Del" buttons with another pill-shaped segmented button with
+a Unicode plus and trashcan symbol. The trashcan symbol is dark red. The pill is
+horizontal and goes where the "Prev" button is right now.
+
+A pill shaped button example, HTML:
+
+<div class="pill" role="group" aria-label="Zoom">
+  <button class="pill__btn" type="button" aria-label="Decrease">−</button>
+  <button class="pill__btn" type="button" aria-label="Increase">+</button>
+</div>
+
+CSS:
+
+.pill{
+  --h: 36px;
+  --r: calc(var(--h) / 2);
+
+  display: inline-flex;
+  height: var(--h);
+  border: 1px solid #999;
+  border-radius: var(--r);
+  overflow: hidden;              /* key: makes it look like one pill */
+  background: #f6f6f6;
+}
+
+.pill__btn{
+  width: calc(var(--h) * 1.25);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: 600 18px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.pill__btn + .pill__btn{
+  border-left: 1px solid #999;   /* divider between halves */
+}
+
+.pill__btn:hover{ background: rgba(0,0,0,.06); }
+.pill__btn:active{ background: rgba(0,0,0,.12); }
+
+.pill__btn:focus-visible{
+  outline: 2px solid #2b6cff;
+  outline-offset: -2px;          /* stays inside the pill */
+}
+
+
+Timestamp should be below the "Refresh" button and should be a human-readable
+version of the timestamp returned by the server, instead of a locally generated
+page-refresh time. Format can be "YYYY-MM-DD HH:MM:SS" in the local timezone.
+
+Buttons and other UI elements should be aligned, so that elements on row 2 will
+be visually aligned with elements on row 1.

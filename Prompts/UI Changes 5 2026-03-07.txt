@@ -1,0 +1,15 @@
+Bug fixes
+
+Zoom buttons should not be tabbable.
+
+It appears that Control-R no longer reloads the page. It seems that the key
+handler ignores modifier state. Only unmodified key presses should be
+considered, except that capital and small letters do not need to be
+distinguished from each other.
+
+Name field appears to allow entering characters outside the specification for
+region names. Fortunately the new invalid string will not be used as a name and
+instead, the old valid value remains. This is a bit confusing, though, so if
+possible, block the characters from being entered. For simplicity, it is not
+necessary to block a starting numeric digit, if that requires browser-specific
+functionality or is otherwise too difficult to implement.

@@ -1,0 +1,57 @@
+Make the pill buttons use the same corner radius as the other UI elements.
+
+Use a CSS Grid layout for the buttons and other UI elements like so:
+
+-----------------------------------------------------------------------------------------------------
+|            |           |               |                   |             |          |             |
+|            | [Refresh] | [Region menu] | [Name textbox   ] | [Up | Down] | [ Save ] | [File Save] |
+|            |           |               |                   |             |          |             |
+|<Logo  here>|---------------------------------------------------------------------------------------
+|            |           |                                   |             |          |             |
+|            |<Timestamp>| [Description textbox            ] | [Add | Del] | [Revert] | [File Load] |
+|            |           |                                   |             |          |             |
+-----------------------------------------------------------------------------------------------------
+
+Buttons should all be the same size. Pill button counts as one button and should
+be the same size as the other buttons.
+
+[Description textbox] left edge should align with [Region menu] left edge, and
+right edge with [Name textbox] right edge.
+
+Save dirty bullet should be the same red as the trashcan and about 50% bigger it
+is now. There should be a space between the bullet and the "Save" text, in the
+size of the "Save" text.
+
+All UI elements (buttons, text boxes, labels, menus) should be the same height,
+which is also the height of the grid boxes. Grid boxes have some small gap
+vertically and horizontally between them.
+
+<Timestamp> should be centered under [Refresh]. It is probably a good idea to
+center all the buttons horizontally within their respective grid boxes.
+
+Logo has been finalized. The size is width 1174, height 253. It should be
+scaled down with preserving aspect ratio, to take exactly the same height as the
+two UI grid rows plus row gap. The logo is a PNG and has a transparent
+background.
+
+I would like to replace [Save], [Revert], [File Save] and [File Load] with
+Unicode pictograms instead of text, but I guess there are no suitable universal
+symbols available. Ideas welcome.
+
+Keyboard navigation:
+
+Tab goes: [Refresh] -> [Region menu] -> [Name textbox] -> [Description textbox]
+-> [Save] -> [Revert] -> [File Save] -> [File Load] -> [Refresh]
+
+[Up], [Down], [Add], [Del] are not reachable by tabbing.
+
+- "Up arrow" is [Up]
+- "Down arrow" is [Down]
+- "n" or "+" is [Add]
+- "d", "Delete", "Backspace" is [Del]
+- "S" is [Save]
+- "R" is [Revert]
+- "W" is [File Save]
+- "O" is [File Load]
+
+Probably should rename "File Load" to "File Open", to be honest.
