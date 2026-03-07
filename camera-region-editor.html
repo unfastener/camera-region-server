@@ -239,12 +239,11 @@
     }
 
     img#photo{
-      max-width:100%;
-      max-height:100%;
-      width:auto;
-      height:auto;
-      display:block;
-      object-fit: contain;
+      position:absolute;
+      left:0;
+      top:0;
+      width:0;
+      height:0;
       user-select:none;
       -webkit-user-drag: none;
       pointer-events:none;
@@ -289,6 +288,21 @@
       text-shadow: 0 2px 8px rgba(0,0,0,0.8);
     }
 
+    .zoompill{
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: var(--button-cell-w);
+      height: var(--ctrl-h);
+      z-index: 4;
+    }
+
+    .zoompill .pill__btn{
+      font-size: 14px;
+      letter-spacing: -0.4px;
+      padding: 0;
+    }
+
     input[type="file"]{ display:none; }
   </style>
 </head>
@@ -330,6 +344,12 @@
           <img id="photo" alt="Camera capture" />
           <canvas id="overlay"></canvas>
 
+          <div class="pill zoompill" id="pillZoom" role="group" aria-label="Zoom controls">
+            <button id="btnZoomIn" class="pill__btn" type="button" aria-label="Zoom in">🔍+</button>
+            <button id="btnZoomAll" class="pill__btn" type="button" aria-label="Show all">🔍</button>
+            <button id="btnZoomOut" class="pill__btn" type="button" aria-label="Zoom out">🔍−</button>
+          </div>
+
           <div class="spinner" id="spinner" aria-label="Loading">
             <!-- Easily replaceable spinner asset -->
             <svg class="spin" viewBox="0 0 50 50" aria-hidden="true">
@@ -356,6 +376,9 @@
   const btnRevert  = document.getElementById('btnRevert');
   const btnFileSave= document.getElementById('btnFileSave');
   const btnFileLoad= document.getElementById('btnFileLoad');
+  const btnZoomIn  = document.getElementById('btnZoomIn');
+  const btnZoomAll = document.getElementById('btnZoomAll');
+  const btnZoomOut = document.getElementById('btnZoomOut');
   const pillNav    = document.getElementById('pillNav');
   const pillEdit   = document.getElementById('pillEdit');
 
@@ -376,6 +399,11 @@
   let imageReady = false;
   let imgW = 0, imgH = 0;  // natural image pixels
   let dispRect = null;     // displayed image rect within card, in CSS pixels (letterboxed)
+  let viewZoom = 1;
+  let panX = 0;
+  let panY = 0;
+  let panDrag = null;      // {startX,startY,panX0,panY0,pointerId,moved}
+  let suppressNextClick = false;
 
   let regions = [];
   let selected = 0;
@@ -412,6 +440,30 @@
     labelEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
   }
 
+  function hasRealSelection() {
+    return selected >= 0 && selected < regions.length;
+  }
+
+  function getSelectionCount() {
+    return regions.length + 1; // +1 for "--" pseudo region
+  }
+
+  function selectionToOrdinal(sel) {
+    return sel < 0 ? 0 : sel + 1;
+  }
+
+  function ordinalToSelection(ord) {
+    return ord <= 0 ? -1 : ord - 1;
+  }
+
+  function stepSelection(delta) {
+    const count = getSelectionCount();
+    if (count <= 0) return;
+    const ord = selectionToOrdinal(selected);
+    const nextOrd = ((ord + delta) % count + count) % count;
+    selectIndex(ordinalToSelection(nextOrd));
+  }
+
   function renderToolbar() {
     btnSave.textContent = "Save";
     btnSave.classList.toggle('dirty', dirty);
@@ -419,18 +471,22 @@
     btnRefresh.disabled = loadingImage;
 
     const haveRegions = regions.length > 0;
+    const hasSel = hasRealSelection();
     const regionsBusy = loadingRegions || savingRegions;
 
-    regionSelect.disabled = regionsBusy || !haveRegions;
-    regionName.disabled   = regionsBusy || !haveRegions;
-    regionDesc.disabled   = regionsBusy || !haveRegions;
+    regionSelect.disabled = regionsBusy;
+    regionName.disabled   = regionsBusy || !hasSel;
+    regionDesc.disabled   = regionsBusy || !hasSel;
 
-    btnPrev.disabled   = regionsBusy || !haveRegions;
-    btnNext.disabled   = regionsBusy || !haveRegions;
-    btnDel.disabled    = regionsBusy || !haveRegions;
+    btnPrev.disabled   = regionsBusy || getSelectionCount() <= 1;
+    btnNext.disabled   = regionsBusy || getSelectionCount() <= 1;
+    btnDel.disabled    = regionsBusy || !hasSel;
     btnSave.disabled   = regionsBusy || !haveRegions;
     btnRevert.disabled = loadingRegions;
     btnAdd.disabled    = regionsBusy || !imageReady;
+    btnZoomIn.disabled = !imageReady;
+    btnZoomAll.disabled = !imageReady;
+    btnZoomOut.disabled = !imageReady;
 
     pillNav.classList.toggle('disabled', btnPrev.disabled && btnNext.disabled);
     pillEdit.classList.toggle('disabled', btnAdd.disabled && btnDel.disabled);
@@ -441,18 +497,33 @@
 
   function updateDispRect() {
     const stageRect = card.getBoundingClientRect();
-    const imgRect = photo.getBoundingClientRect();
-
-    dispRect = {
-      x: imgRect.left - stageRect.left,
-      y: imgRect.top  - stageRect.top,
-      w: imgRect.width,
-      h: imgRect.height,
-      stageW: stageRect.width,
-      stageH: stageRect.height,
-    };
-
     const dpr = window.devicePixelRatio || 1;
+
+    if (!imageReady || !imgW || !imgH) {
+      dispRect = { x: 0, y: 0, w: 0, h: 0, stageW: stageRect.width, stageH: stageRect.height };
+    } else {
+      const fit = Math.min(stageRect.width / imgW, stageRect.height / imgH);
+      const baseW = imgW * fit;
+      const baseH = imgH * fit;
+      const baseX = (stageRect.width - baseW) / 2;
+      const baseY = (stageRect.height - baseH) / 2;
+      const w = baseW * viewZoom;
+      const h = baseH * viewZoom;
+      const x = baseX + panX;
+      const y = baseY + panY;
+
+      dispRect = {
+        x, y, w, h,
+        stageW: stageRect.width,
+        stageH: stageRect.height,
+      };
+
+      photo.style.left = `${x}px`;
+      photo.style.top = `${y}px`;
+      photo.style.width = `${w}px`;
+      photo.style.height = `${h}px`;
+    }
+
     overlay.width  = Math.max(1, Math.round(stageRect.width * dpr));
     overlay.height = Math.max(1, Math.round(stageRect.height * dpr));
     overlay.style.width = `${stageRect.width}px`;
@@ -466,6 +537,34 @@
     const sx = dispRect.w / imgW;
     const sy = dispRect.h / imgH;
     return { x: dispRect.x + p.x * sx, y: dispRect.y + p.y * sy };
+  }
+
+  function zoomAt(factor, anchorX, anchorY) {
+    if (!imageReady || !imgW || !imgH || !dispRect) return;
+    const stageRect = card.getBoundingClientRect();
+    const fit = Math.min(stageRect.width / imgW, stageRect.height / imgH);
+    const baseW = imgW * fit;
+    const baseH = imgH * fit;
+    const baseX = (stageRect.width - baseW) / 2;
+    const baseY = (stageRect.height - baseH) / 2;
+    const oldZoom = viewZoom;
+    const newZoom = Math.min(12, Math.max(1, oldZoom * factor));
+    if (newZoom === oldZoom) return;
+
+    const rx = (anchorX - baseX - panX) / (baseW * oldZoom);
+    const ry = (anchorY - baseY - panY) / (baseH * oldZoom);
+
+    viewZoom = newZoom;
+    panX = anchorX - baseX - rx * (baseW * newZoom);
+    panY = anchorY - baseY - ry * (baseH * newZoom);
+    redraw();
+  }
+
+  function resetZoomToShowAll() {
+    viewZoom = 1;
+    panX = 0;
+    panY = 0;
+    redraw();
   }
 
   function ensureMinSizes(r) {
@@ -487,26 +586,35 @@
 
   function buildRegionSelect() {
     regionSelect.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '-1';
+    none.textContent = '--';
+    regionSelect.appendChild(none);
     regions.forEach((r, idx) => {
       const opt = document.createElement('option');
       opt.value = String(idx);
       opt.textContent = `${idx}: ${r.name}`;
       regionSelect.appendChild(opt);
     });
-    if (regions.length) regionSelect.value = String(selected);
+    regionSelect.value = String(hasRealSelection() ? selected : -1);
   }
 
   function syncSelectedToFields() {
-    if (!regions.length) return;
-    regionSelect.value = String(selected);
+    regionSelect.value = String(hasRealSelection() ? selected : -1);
+    if (!hasRealSelection()) {
+      regionName.value = '';
+      regionDesc.value = '';
+      return;
+    }
     regionName.value = regions[selected].name ?? '';
     regionDesc.value = regions[selected].description ?? '';
   }
 
   function selectIndex(i) {
-    if (!regions.length) return;
-    selected = ((i % regions.length) + regions.length) % regions.length;
+    if (i < 0 || regions.length === 0) selected = -1;
+    else selected = ((i % regions.length) + regions.length) % regions.length;
     syncSelectedToFields();
+    renderToolbar();
     redraw();
   }
 
@@ -591,7 +699,7 @@
 
     // Draw non-selected back-to-front; selected last.
     const indices = regions.map((_, i) => i).sort((a,b) => b-a);
-    const ordered = indices.filter(i => i !== selected).concat(selected);
+    const ordered = hasRealSelection() ? indices.filter(i => i !== selected).concat(selected) : indices;
 
     for (const i of ordered) drawRegion(ctx, regions[i], i, i === selected);
   }
@@ -633,7 +741,7 @@
     ctx.beginPath();
     ctx.rect(x0, y0, boxW, boxH);
     ctx.fillStyle = color; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = outline; ctx.stroke();
+    ctx.lineWidth = (wOut - wCol) / 2; ctx.strokeStyle = outline; ctx.stroke();
 
     ctx.save();
     ctx.beginPath();
@@ -812,7 +920,7 @@
       if (!rr) throw new Error();
       const normalized = normalizeRegions(rr);
       regions = normalized.normalized;
-      selected = 0;
+      selected = regions.length ? 0 : -1;
       buildRegionSelect();
       syncSelectedToFields();
       setDirty(normalized.changed);
@@ -918,7 +1026,7 @@
         const rr = parseRegionsPayloadStrict(obj);
         if (!rr) return;
         regions = normalizeRegions(rr).normalized;
-        selected = 0;
+        selected = regions.length ? 0 : -1;
         buildRegionSelect();
         syncSelectedToFields();
         setDirty(true);
@@ -932,8 +1040,8 @@
   // ---------- UI actions ----------
   btnRefresh.addEventListener('click', () => { if (!loadingImage) loadImageFromServer(); });
 
-  btnPrev.addEventListener('click', () => selectIndex(selected - 1));
-  btnNext.addEventListener('click', () => selectIndex(selected + 1));
+  btnPrev.addEventListener('click', () => stepSelection(-1));
+  btnNext.addEventListener('click', () => stepSelection(1));
 
   btnAdd.addEventListener('click', () => {
     if (!imageReady || !imgW || !imgH) return;
@@ -954,7 +1062,7 @@
   });
 
   btnDel.addEventListener('click', () => {
-    if (!regions.length) return;
+    if (!hasRealSelection()) return;
     const del = selected;
     regions.splice(del, 1);
     selected = regions.length ? Math.min(del, regions.length - 1) : 0;
@@ -974,7 +1082,7 @@
   });
 
   regionName.addEventListener('input', () => {
-    if (!regions.length) return;
+    if (!hasRealSelection()) return;
     const s = regionName.value.trim();
     if (!validateName(s)) return;
     if (regions.some((r, i) => i !== selected && r.name === s)) return;
@@ -985,7 +1093,7 @@
   });
 
   regionDesc.addEventListener('input', () => {
-    if (!regions.length) return;
+    if (!hasRealSelection()) return;
     const normalized = normalizeDescription(regionDesc.value);
     if (normalized !== regionDesc.value) regionDesc.value = normalized;
     regions[selected].description = normalized;
@@ -1015,15 +1123,47 @@
     if (lower === 'o') { e.preventDefault(); if (!btnFileLoad.classList.contains('disabled')) btnFileLoad.click(); return; }
   });
 
+  btnZoomIn.addEventListener('click', () => {
+    if (!imageReady || !dispRect) return;
+    zoomAt(1.2, dispRect.stageW / 2, dispRect.stageH / 2);
+  });
+  btnZoomOut.addEventListener('click', () => {
+    if (!imageReady || !dispRect) return;
+    zoomAt(1 / 1.2, dispRect.stageW / 2, dispRect.stageH / 2);
+  });
+  btnZoomAll.addEventListener('click', () => resetZoomToShowAll());
+
+  overlay.addEventListener('wheel', (e) => {
+    if (!imageReady || !dispRect) return;
+    e.preventDefault();
+    const rect = card.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    zoomAt(factor, x, y);
+  }, { passive: false });
+
   // ---------- Pointer interaction ----------
   overlay.addEventListener('pointerdown', (e) => {
-    if (!imageReady || !dispRect || !regions.length) return;
+    if (!imageReady || !dispRect) return;
 
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
     const tgt = pickInteractionTarget(pCanvas);
-    if (!tgt) return;
+    if (!tgt) {
+      panDrag = {
+        startX: pCanvas.x,
+        startY: pCanvas.y,
+        panX0: panX,
+        panY0: panY,
+        pointerId: e.pointerId,
+        moved: false,
+      };
+      overlay.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
 
     if (tgt.index !== selected) {
       selected = tgt.index;
@@ -1058,7 +1198,19 @@
   });
 
   overlay.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.pointerId || !regions.length) return;
+    if (panDrag && e.pointerId === panDrag.pointerId) {
+      const rect = card.getBoundingClientRect();
+      const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const dx = pCanvas.x - panDrag.startX;
+      const dy = pCanvas.y - panDrag.startY;
+      panX = panDrag.panX0 + dx;
+      panY = panDrag.panY0 + dy;
+      panDrag.moved = panDrag.moved || (Math.abs(dx) + Math.abs(dy) > 2);
+      redraw();
+      return;
+    }
+
+    if (!drag || e.pointerId !== drag.pointerId || !hasRealSelection()) return;
 
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -1166,19 +1318,34 @@
   });
 
   overlay.addEventListener('pointerup', (e) => {
+    if (panDrag && e.pointerId === panDrag.pointerId) {
+      suppressNextClick = panDrag.moved;
+      panDrag = null;
+      try { overlay.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointerId) return;
     drag = null;
     try { overlay.releasePointerCapture(e.pointerId); } catch {}
   });
   overlay.addEventListener('pointercancel', (e) => {
+    if (panDrag && e.pointerId === panDrag.pointerId) {
+      panDrag = null;
+      try { overlay.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
     if (!drag || e.pointerId !== drag.pointerId) return;
     drag = null;
     try { overlay.releasePointerCapture(e.pointerId); } catch {}
   });
 
   overlay.addEventListener('click', (e) => {
-    if (drag) return;
-    if (!imageReady || !dispRect || !regions.length) return;
+    if (drag || panDrag) return;
+    if (suppressNextClick) {
+      suppressNextClick = false;
+      return;
+    }
+    if (!imageReady || !dispRect) return;
     const rect = card.getBoundingClientRect();
     const pCanvas = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
@@ -1190,6 +1357,7 @@
     }
     const pick = pickRegionForSelect(pCanvas);
     if (pick !== null) selectIndex(pick);
+    else selectIndex(-1);
   });
 
   window.addEventListener('resize', () => redraw());
