@@ -182,3 +182,9 @@ curl -fS -X PUT \
 - This API is intended to run behind an HTTPS reverse proxy that handles auth/TLS.
 - Captures and derived region files are stored under `--capture-dir`.
 - Non-API routes are served from `--static-dir` when configured.
+
+## Screenshot
+
+Example of the browser-based region editor:
+
+![Camera region editor screenshot](./screenshot.png)
