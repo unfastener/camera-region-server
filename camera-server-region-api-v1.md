@@ -356,8 +356,18 @@ Each region object:
 - `width` (integer, required): output width in pixels, `> 0`
 - `height` (integer, required): output height in pixels, `> 0`
 - `rotation_deg` (number, required): rotation angle in degrees
-  - Positive is counterclockwise.
+  - Positive angles follow the image-coordinate convention defined below.
   - Range is not constrained by the API, but `[-180, 180)` is recommended for readability.
+
+### Coordinate convention
+
+Image coordinates use the usual raster convention:
+
+- origin `(0, 0)` is the top-left corner of the source image
+- `x` increases to the right
+- `y` increases downward
+
+Under this convention, positive `rotation_deg` is mathematically counterclockwise in `(x, y)` coordinates, but may appear visually clockwise to implementers who are used to Cartesian coordinates with positive `y` upward. Implementers MUST follow the sampling equations below rather than relying on intuition about clockwise/counterclockwise appearance.
 
 ### Semantics (normative)
 
@@ -366,7 +376,7 @@ For each output pixel `(u, v)` where `u = 0..width-1` and `v = 0..height-1`, def
 - `du = u - (width - 1) / 2`
 - `dv = v - (height - 1) / 2`
 - `theta = rotation_deg * pi / 180`
-- Source coordinate:
+- Then the source coordinate to sample is:
 
   - `x = cx + du*cos(theta) - dv*sin(theta)`
   - `y = cy + du*sin(theta) + dv*cos(theta)`
@@ -374,6 +384,41 @@ For each output pixel `(u, v)` where `u = 0..width-1` and `v = 0..height-1`, def
 The server samples the source image at `(x, y)` (e.g., bilinear interpolation) and writes the result to output pixel `(u, v)`.
 
 This produces an axis-aligned output rectangle of exactly `width × height` with contents taken from the original image.
+
+This definition is authoritative. In other words, the API defines an **output-pixel to source-image** mapping.
+
+### Important implementation note
+
+Many imaging libraries do **not** ask for this mapping directly.
+
+- If a library expects an **output-to-source** transform, use the equations above directly.
+- If a library expects a **source-to-output** transform, you MUST invert the transform before passing it to the library.
+- If a library uses a flag or mode for “inverse map”, enable that mode when appropriate.
+
+A common implementation bug is to negate `rotation_deg` incorrectly because the implementer mixes up:
+
+- image coordinates (`y` downward) vs Cartesian coordinates (`y` upward)
+- output-to-source transforms vs source-to-output transforms
+
+Implementers SHOULD verify the sign using a non-symmetric test image, such as text, an arrow, or a digit display.
+
+### Worked example
+
+Example region:
+
+- `cx = 100`
+- `cy = 50`
+- `width = 3`
+- `height = 1`
+- `rotation_deg = 90`
+
+Then:
+
+- output pixel `(0, 0)` has `du = -1`, `dv = 0`, so it samples source `(100, 49)`
+- output pixel `(1, 0)` has `du = 0`, `dv = 0`, so it samples source `(100, 50)`
+- output pixel `(2, 0)` has `du = 1`, `dv = 0`, so it samples source `(100, 51)`
+
+So with `rotation_deg = 90`, moving rightward in the output image corresponds to moving downward in the source image.
 
 ### Out-of-bounds behavior
 
@@ -401,6 +446,8 @@ If strict mode is used, `422` SHOULD include a problem detail explaining which r
 ---
 
 ## Examples
+
+For rotation behavior and transform direction, see the worked example in the Geometry section above. Implementers SHOULD verify their image-library mapping against that example before relying on visual intuition alone.
 
 ### Trigger capture
 
