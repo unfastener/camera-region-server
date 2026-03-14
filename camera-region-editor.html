@@ -406,7 +406,7 @@
   let suppressNextClick = false;
 
   let regions = [];
-  let selected = 0;
+  let selected = -1;
   let dirty = false;
 
   let loadingImage = false;
@@ -920,7 +920,7 @@
       if (!rr) throw new Error();
       const normalized = normalizeRegions(rr);
       regions = normalized.normalized;
-      selected = regions.length ? 0 : -1;
+      selected = -1;
       buildRegionSelect();
       syncSelectedToFields();
       setDirty(normalized.changed);
@@ -1026,7 +1026,7 @@
         const rr = parseRegionsPayloadStrict(obj);
         if (!rr) return;
         regions = normalizeRegions(rr).normalized;
-        selected = regions.length ? 0 : -1;
+        selected = -1;
         buildRegionSelect();
         syncSelectedToFields();
         setDirty(true);
