@@ -147,7 +147,7 @@ class Capture:
         }
         if self.status == "ready":
             payload["assets"] = {
-                "full_jpeg": f"/api/v1/images/full?capture_id={self.capture_id}",
+                "full_jpeg": f"api/v1/images/full?capture_id={self.capture_id}",
             }
         if self.status == "failed":
             payload["error_code"] = self.error_code or "capture_failed"
@@ -520,7 +520,7 @@ class BaseHandler(tornado.web.RequestHandler):
     def write_capture_status(self, status: int, capture: Capture) -> None:
         self.set_status(status)
         self.set_header("Content-Type", JSON_CT)
-        self.set_header("Location", f"/api/v1/captures/{capture.capture_id}")
+        self.set_header("Location", f"api/v1/captures/{capture.capture_id}")
         if status == 202:
             self.set_header("Retry-After", "1")
         self.write(json_dumps(capture.status_payload()))

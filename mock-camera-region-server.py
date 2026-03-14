@@ -44,7 +44,7 @@ GET_CAPTURE_STATUS_BODY = (
     f'    "timestamp": {CAPTURE_TIMESTAMP},\n'
     '    "status": "ready",\n'
     '    "assets": {\n'
-    f'        "full_jpeg": "/api/v1/images/full?capture_id={CAPTURE_ID}"\n'
+    f'        "full_jpeg": "api/v1/images/full?capture_id={CAPTURE_ID}"\n'
     "    }\n"
     "}\n"
 )
@@ -85,7 +85,7 @@ class BaseHandler(tornado.web.RequestHandler):
 class CapturesHandler(BaseHandler):
     def post(self) -> None:
         self.set_status(201)
-        self.set_header("Location", f"/api/v1/captures/{CAPTURE_ID}")
+        self.set_header("Location", f"api/v1/captures/{CAPTURE_ID}")
         self.set_header("Content-Type", "application/json")
         self.write(POST_CAPTURES_BODY)
 

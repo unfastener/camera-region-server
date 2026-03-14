@@ -913,7 +913,7 @@
   async function loadRegionsFromServer() {
     loadingRegions = true; renderToolbar();
     try {
-      const res = await fetch('/api/v1/regions', { cache: 'no-store' });
+      const res = await fetch('api/v1/regions', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const data = await res.json();
       const rr = parseRegionsPayloadStrict(data);
@@ -945,7 +945,7 @@
           rotation_deg: r.geometry.rotation_deg,
         }
       }))});
-      const res = await fetch('/api/v1/regions', {
+      const res = await fetch('api/v1/regions', {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
         body
@@ -961,7 +961,7 @@
   async function loadImageFromServer() {
     loadingImage = true; renderToolbar(); setSpinner(true);
     try {
-      const res = await fetch('/api/v1/images/full?new_capture=true&wait=true', { cache: 'no-store' });
+      const res = await fetch('api/v1/images/full?new_capture=true&wait=true', { cache: 'no-store' });
       if (!res.ok) throw new Error();
       const tsHeader = res.headers.get('X-Capture-Timestamp');
       const ts = tsHeader === null ? NaN : Number(tsHeader);
